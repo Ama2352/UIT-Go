@@ -1,0 +1,8 @@
+ALTER TABLE trips
+ALTER COLUMN pickup_lat TYPE DECIMAL(10,6),
+    ALTER COLUMN pickup_lng TYPE DECIMAL(10,6),
+    ALTER COLUMN dropoff_lat TYPE DECIMAL(10,6),
+    ALTER COLUMN dropoff_lng TYPE DECIMAL(10,6),
+    ALTER COLUMN distance_km TYPE DECIMAL(8,2),
+    ALTER COLUMN estimated_price TYPE DECIMAL(12,2),
+    ALTER COLUMN final_price TYPE DECIMAL(12,2);

@@ -1,0 +1,38 @@
+services:
+  trip_postgres:
+    image: postgres:15-alpine
+    container_name: trip_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${TRIPDB_USERNAME}
+      POSTGRES_PASSWORD: ${TRIPDB_PASSWORD}
+      POSTGRES_DB: ${TRIPDB_DATABASE}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TRIPDB_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  trip-service:
+    build: .
+    container_name: trip_service
+    depends_on:
+      trip_postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://trip_postgres:5432/${TRIPDB_DATABASE}
+      SPRING_DATASOURCE_USERNAME: ${TRIPDB_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${TRIPDB_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8081:8081"
+
+volumes:
+  postgres_data:
