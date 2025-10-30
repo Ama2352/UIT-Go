@@ -27,12 +27,8 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/userservice?schema=public
-      JWT_SECRET: your-super-secret-jwt-key-change-this-in-production
-      JWT_EXPIRES_IN: 1d
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
