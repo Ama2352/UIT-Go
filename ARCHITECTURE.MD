@@ -115,7 +115,7 @@ The following diagram shows the Event-Driven Architecture implemented in UIT-Go.
 │ - OpenTelemetry / AWS X-Ray provide distributed tracing.                   │
 │ - Continuous monitoring supports SLO validation and regression detection.  │
 └────────────────────────────────────────────────────────────────────────────┘
-```text
+```
 
 > This figure illustrates how each technical layer in UIT-Go’s backend contributes to achieving **scalability**, **low latency**, and **resilience** under high load.  
 >  
