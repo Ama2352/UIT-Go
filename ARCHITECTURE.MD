@@ -129,8 +129,6 @@ The following diagram shows the Event-Driven Architecture implemented in UIT-Go.
 >  
 > Collectively, these layers demonstrate how Module A transforms UIT-Go into a **hyper-scalable, event-driven architecture** capable of sustaining 20 k+ RPS with predictable performance and fault tolerance.
 
-
-![Module A – Scalable Event-Driven Architecture](./assets/moduleA-scalable-architecture.png)
 ### 4.2. Implementation Plan for Module A
 
 #### 🎯 Objective  
