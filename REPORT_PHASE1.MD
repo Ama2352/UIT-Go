@@ -26,7 +26,7 @@ UIT-Go is a **distributed backend system** designed to simulate a production-gra
 The architecture follows a **domain-driven microservices** model, focusing on **high scalability, low latency, and fault tolerance under heavy traffic**.
 
 > For a detailed breakdown of the system components, microservices, and communication flows, please refer to  
-> 🔗 [**Section II – Core Architecture in `ARCHITECTURE.md`**](./ARCHITECTURE.md#ii-core-architecture).
+> 🔗 [**Section II – Core Architecture in `ARCHITECTURE.MD`**](./ARCHITECTURE.MD#ii-core-architecture).
 
 ### 🔧 Core Architecture Summary
 - **API Gateway:** Entry point for clients, handles routing and JWT authentication.  
@@ -42,7 +42,7 @@ The architecture follows a **domain-driven microservices** model, focusing on **
 > *Figure 1 – Event-driven architecture enabling independent, decoupled communication through RabbitMQ and Redis.*
 
 > For a full explanation of each service’s role, scaling pattern, and communication type (REST, MQ, WebSocket), see  
-> 🔗 [**System Context and Communication Patterns in `ARCHITECTURE.md`**](./ARCHITECTURE.md#i-system-context).
+> 🔗 [**System Context and Communication Patterns in `ARCHITECTURE.MD`**](./ARCHITECTURE.MD#i-system-context).
 
 ---
 
@@ -51,7 +51,7 @@ The architecture follows a **domain-driven microservices** model, focusing on **
 Module A focuses on **evaluating and optimizing the system’s ability to handle extreme concurrency** using asynchronous communication, caching, and auto-scaling strategies.
 
 > For a full architectural illustration, refer to  
-> 🔗 [**Section 4.1 – Architectural Model for Module A in `ARCHITECTURE.md`**](./ARCHITECTURE.md#41-architectural-model-for-module-a).
+> 🔗 [**Section 4.1 – Architectural Model for Module A in `ARCHITECTURE.MD`**](./ARCHITECTURE.MD#41-architectural-model-for-module-a).
 
 ### 🎯 Approach  
 
@@ -64,7 +64,7 @@ CLIENT & ACCESS → APPLICATION SERVICE → MESSAGING & ASYNC
 ```
 
 > For detailed description of each layer, refer to  
-> 🔗 [**Section 4.2 – Scalable Architecture Stack for Module A in `ARCHITECTURE.md`**](./ARCHITECTURE.md#42-scalable-architecture-stack-for-module-a).
+> 🔗 [**Section 4.2 – Scalable Architecture Stack for Module A in `ARCHITECTURE.MD`**](./ARCHITECTURE.MD#42-scalable-architecture-stack-for-module-a).
 
 #### b. Testing Methodology  
 | Objective | Tool | Description |
@@ -140,7 +140,7 @@ Performance validation and load testing will be conducted after completing the i
 5. **Document ADR results** and finalize architectural tuning for submission.
 
 > Detailed optimization objectives and performance targets are documented in  
-> 🔗 [**Module A Optimization & Validation Plan in `ARCHITECTURE.md`**](./ARCHITECTURE.md#42-implementation-plan-for-module-a).
+> 🔗 [**Module A Optimization & Validation Plan in `ARCHITECTURE.MD`**](./ARCHITECTURE.MD#42-implementation-plan-for-module-a).
 
 
 ---
@@ -151,5 +151,5 @@ Performance validation and load testing will be conducted after completing the i
 
 ---
 
-**📂 File:** `REPORT.md`  
+**📂 File:** `REPORT.MD`  
 **Last Updated:** November 2025  
