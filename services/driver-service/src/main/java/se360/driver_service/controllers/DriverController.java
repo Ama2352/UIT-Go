@@ -28,21 +28,24 @@ public class DriverController {
 
     @PutMapping("/{driverId}/location")
     public ResponseEntity<String> updateLocation(
-        @PathVariable String driverId,
-        @RequestParam double lat,
-        @RequestParam double lng
-    ) {
+            @PathVariable String driverId,
+            @RequestParam double lat,
+            @RequestParam double lng) {
         driverService.updateDriverLocation(driverId, lat, lng);
         return ResponseEntity.ok("Location updated for driver " + driverId);
     }
 
     @GetMapping("/search")
     public ResponseEntity<List<String>> searchNearbyDrivers(
-        @RequestParam double lat,
-        @RequestParam double lng,
-        @RequestParam(defaultValue = "3") double radiusInKm
-    ) {
+            @RequestParam double lat,
+            @RequestParam double lng,
+            @RequestParam(defaultValue = "3") double radiusInKm) {
         List<String> drivers = driverService.findNearbyDrivers(lat, lng, radiusInKm);
         return ResponseEntity.ok(drivers);
+    }
+
+    @GetMapping("/ping")
+    public String ping() {
+        return "Welcome to Driver Service!";
     }
 }

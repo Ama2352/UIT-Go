@@ -117,7 +117,7 @@ services:
       KONG_LOG_LEVEL: debug
     ports:
       - "8000:8000" # Public requests (Gateway)
-      - "8001:8001" # Admin API
+      - "8003:8003" # Admin API
     volumes:
       - ./kong/kong.yml:/usr/local/kong/declarative/kong.yml
     depends_on:

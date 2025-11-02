@@ -12,15 +12,12 @@ import se360.trip_service.model.dtos.TripRatingResponse;
 import se360.trip_service.model.enums.VehicleType;
 import se360.trip_service.service.TripService;
 
-
-
-
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/trips")
+@RequestMapping("/trips")
 @RequiredArgsConstructor
 public class TripController {
 
@@ -31,7 +28,6 @@ public class TripController {
         EstimateFareResponse response = tripService.estimateFare(request);
         return ResponseEntity.ok(response);
     }
-
 
     @PostMapping
     public ResponseEntity<TripResponse> createTrip(@RequestBody CreateTripRequest request) {
@@ -56,8 +52,7 @@ public class TripController {
     public ResponseEntity<BigDecimal> calculateFare(
             @RequestParam BigDecimal distanceKm,
             @RequestParam VehicleType vehicleType,
-            @RequestParam(defaultValue = "false") boolean isPeakHour
-    ) {
+            @RequestParam(defaultValue = "false") boolean isPeakHour) {
         BigDecimal fare = tripService.calculateFare(distanceKm, vehicleType, isPeakHour);
         return ResponseEntity.ok(fare);
     }
@@ -65,8 +60,7 @@ public class TripController {
     @PostMapping("/{id}/accept")
     public ResponseEntity<TripResponse> acceptTrip(
             @PathVariable UUID id,
-            @RequestParam UUID driverId
-    ) {
+            @RequestParam UUID driverId) {
         return tripService.acceptTrip(id, driverId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -89,8 +83,7 @@ public class TripController {
     @PostMapping("/{id}/cancel")
     public ResponseEntity<TripResponse> cancelTrip(
             @PathVariable UUID id,
-            @RequestParam String cancelledBy
-    ) {
+            @RequestParam String cancelledBy) {
         return tripService.cancelTrip(id, cancelledBy)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -104,6 +97,8 @@ public class TripController {
         return ResponseEntity.ok(response);
     }
 
-
-
+    @GetMapping("/ping")
+    public String ping() {
+        return "Welcome to Trip Service!";
+    }
 }

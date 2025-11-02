@@ -64,5 +64,10 @@ export class UserController {
   async resetPassword(@Body(ValidationPipe) resetPasswordDto: ResetPasswordDto) {
     return this.userService.resetPassword(resetPasswordDto);
   }
+  
+  @Get('users/ping')
+  ping() {
+    return 'Welcome to User Service!';
+  }
 }
 
