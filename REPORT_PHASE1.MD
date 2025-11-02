@@ -50,9 +50,6 @@ The architecture follows a **domain-driven microservices** model, focusing on **
 
 Module A focuses on **evaluating and optimizing the system’s ability to handle extreme concurrency** using asynchronous communication, caching, and auto-scaling strategies.
 
-> For a full architectural illustration, refer to  
-> 🔗 [**Section 4.1 – Architectural Model for Module A in `ARCHITECTURE.MD`**](./ARCHITECTURE.MD#41-architectural-model-for-module-a).
-
 ### 🎯 Approach  
 
 #### a. Scalable Architecture Stack  
