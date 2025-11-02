@@ -51,12 +51,82 @@ The following diagram shows the Event-Driven Architecture implemented in UIT-Go.
 ---
 
 ## IV. Detailed Architecture for Module A — Scalability & Performance  
-### 4.1. Architectural Model for Module A
-This section provides a **deep dive** into the scalability and performance design of the UIT-Go system, focusing on two critical flows:  
-1. **Trip Creation & Driver Matching**  
-2. **Driver Location Update**  
+### 4.2. Scalable Architecture Stack for Module A  
 
-The goal is to achieve **hyper-scale readiness** through asynchronous communication, caching, and auto-scaling — ensuring the system remains performant and reliable even during extreme traffic spikes.
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         CLIENT & ACCESS LAYER                             │
+├────────────────────────────────────────────────────────────────────────────┤
+│ - API Gateway handles JWT validation, rate-limiting, and routing.          │
+│ - Load balancing across multiple stateless service instances.              │
+│ - Enables horizontal scaling and uniform entry point for all traffic.      │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         APPLICATION SERVICE LAYER                          │
+├────────────────────────────────────────────────────────────────────────────┤
+│ - Each microservice (Trip, Driver, Payment, User, Notif) runs independently│
+│   in containerized tasks on ECS/EKS.                                       │
+│ - Stateless design → easy horizontal scaling.                              │
+│ - Service-specific scaling policies: TripSvc by queue depth, DriverSvc by  │
+│   Redis ops/sec, NotifSvc by active WebSocket connections.                 │
+│ - Idempotent consumers ensure exactly-once message processing.             │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           MESSAGING & ASYNC LAYER                          │
+├────────────────────────────────────────────────────────────────────────────┤
+│ - RabbitMQ decouples Trip and Driver Services via event queues.            │
+│ - Asynchronous processing absorbs burst traffic and avoids service blocking│
+│ - Dead-Letter Queue (DLQ) + retry mechanism enhance reliability.           │
+│ - Prefetch tuning (50–200) maintains optimal throughput.                   │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                             CACHING & GEO LAYER                            │
+├────────────────────────────────────────────────────────────────────────────┤
+│ - Redis GEO stores driver coordinates in memory for <10ms lookups.         │
+│ - TTL-based expiration (30–60s) keeps data fresh and lightweight.          │
+│ - allkeys-lru eviction prevents memory overflow under high concurrency.    │
+│ - Write coalescing/debounce reduces network chatter and improves hit rate. │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              DATA STORAGE LAYER                            │
+├────────────────────────────────────────────────────────────────────────────┤
+│ - PostgreSQL primary handles writes; read replicas handle analytics reads. │
+│ - Connection pool tuning (HikariCP) ensures consistent latency under load. │
+│ - Indexes on hot columns (status, created_at, driver_id) improve queries.  │
+│ - Read replicas improve query throughput by ~1.5× during spikes.           │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           INFRASTRUCTURE & SCALING LAYER                   │
+├────────────────────────────────────────────────────────────────────────────┤
+│ - ECS Auto Scaling: dynamic scaling by CPU, queue depth, and latency.      │
+│ - Cooldown periods prevent oscillation (flapping).                         │
+│ - Service mesh or discovery (optional) ensures fault-tolerant routing.     │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           OBSERVABILITY & CONTROL LAYER                    │
+├────────────────────────────────────────────────────────────────────────────┤
+│ - Grafana + CloudWatch visualize latency, queue depth, DB usage.           │
+│ - OpenTelemetry / AWS X-Ray provide distributed tracing.                   │
+│ - Continuous monitoring supports SLO validation and regression detection.  │
+└────────────────────────────────────────────────────────────────────────────┘
+
+> This figure illustrates how each technical layer in UIT-Go’s backend contributes to achieving **scalability**, **low latency**, and **resilience** under high load.  
+>  
+> - **Client & Access Layer:** Centralized entry point through API Gateway ensures secure, rate-limited, and horizontally scalable access for all clients.  
+> - **Application Service Layer:** Stateless containerized microservices (Trip, Driver, Payment, User, Notification) allow independent scaling and isolation of workloads.  
+> - **Messaging & Async Layer:** RabbitMQ acts as a buffer, decoupling services and absorbing burst traffic for high availability and elasticity.  
+> - **Caching & Geo Layer:** Redis GEO provides sub-10 ms lookups for driver locations and reduces database load through TTL-based caching.  
+> - **Data Storage Layer:** PostgreSQL with read replicas ensures fast query responses and high throughput during peak usage.  
+> - **Infrastructure & Scaling Layer:** ECS/EKS auto-scaling policies dynamically adjust service capacity based on real-time performance metrics.  
+> - **Observability & Control Layer:** Grafana, CloudWatch, and X-Ray provide deep visibility into latency, queue depth, and system health—enabling data-driven optimization.  
+>  
+> Collectively, these layers demonstrate how Module A transforms UIT-Go into a **hyper-scalable, event-driven architecture** capable of sustaining 20 k+ RPS with predictable performance and fault tolerance.
+
 
 ![Module A – Scalable Event-Driven Architecture](./assets/moduleA-scalable-architecture.png)
 ### 4.2. Implementation Plan for Module A
