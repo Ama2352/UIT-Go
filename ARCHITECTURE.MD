@@ -53,6 +53,7 @@ The following diagram shows the Event-Driven Architecture implemented in UIT-Go.
 ## IV. Detailed Architecture for Module A — Scalability & Performance  
 ### 4.2. Scalable Architecture Stack for Module A  
 
+```text
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                         CLIENT & ACCESS LAYER                             │
 ├────────────────────────────────────────────────────────────────────────────┤
