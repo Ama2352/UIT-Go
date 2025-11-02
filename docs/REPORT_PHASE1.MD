@@ -120,7 +120,7 @@ The following challenges are being encountered during this phase of development:
 ## 5. Current Progress & Future Directions  
 
 #### ⚙️ Current Progress
-At this stage, the core microservices of **UIT-Go** (Trip, Driver, User, Payment, and Notification) have been developed, containerized, and integrated via Docker Compose.  
+At this stage, the core microservices of **UIT-Go** (Trip, Driver, User) have been developed, containerized, and integrated via Docker Compose.  
 The team is currently working on:
 - Implementing **RabbitMQ** for asynchronous communication between services.  
 - Setting up **Redis GEO** for real-time driver location tracking.  
