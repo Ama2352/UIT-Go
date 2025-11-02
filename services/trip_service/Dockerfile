@@ -4,7 +4,7 @@ WORKDIR /app
 COPY . .
 RUN mvn clean package -DskipTests
 # ===== STAGE 2: RUNTIME =====
-FROM eclipse-temurin:17-jdk-alpine
+FROM eclipse-temurin:21-jdk-alpine
 WORKDIR /app
 
 # Copy JAR file từ stage build
