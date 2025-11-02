@@ -49,6 +49,11 @@ export class UserController {
     return this.userService.updateProfile(user.sub, updateUserDto);
   }
 
+  @Get('users/ping')
+  ping() {
+    return 'Welcome to User Service!';
+  }
+
   @Get('users/:id')
   @UseGuards(JwtAuthGuard)
   async getUserById(@Param('id') id: string) {
@@ -63,11 +68,6 @@ export class UserController {
   @Post('sessions/reset-password')
   async resetPassword(@Body(ValidationPipe) resetPasswordDto: ResetPasswordDto) {
     return this.userService.resetPassword(resetPasswordDto);
-  }
-  
-  @Get('users/ping')
-  ping() {
-    return 'Welcome to User Service!';
   }
 }
 
