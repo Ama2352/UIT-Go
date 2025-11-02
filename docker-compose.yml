@@ -1,0 +1,142 @@
+services:
+  # =====================================
+  # 🧠 USER SERVICE (NestJS + Prisma)
+  # =====================================
+  user-postgres:
+    image: postgres:15-alpine
+    container_name: user-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${USERDB_USERNAME}
+      POSTGRES_PASSWORD: ${USERDB_PASSWORD}
+      POSTGRES_DB: ${USERDB_DATABASE}
+    ports:
+      - "5433:5432"
+    volumes:
+      - user_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  user-service:
+    build: ./services/user-service
+    container_name: user-service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+    depends_on:
+      user-postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && node dist/main"
+
+  # =====================================
+  # 🚗 TRIP SERVICE (Spring Boot)
+  # =====================================
+  trip-postgres:
+    image: postgres:15-alpine
+    container_name: trip-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${TRIPDB_USERNAME}
+      POSTGRES_PASSWORD: ${TRIPDB_PASSWORD}
+      POSTGRES_DB: ${TRIPDB_DATABASE}
+    ports:
+      - "5434:5432"
+    volumes:
+      - trip_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TRIPDB_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  trip-service:
+    build: ./services/trip_service
+    container_name: trip-service
+    restart: unless-stopped
+    depends_on:
+      trip-postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: ${TRIPDB_URL}
+      SPRING_DATASOURCE_USERNAME: ${TRIPDB_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${TRIPDB_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+    ports:
+      - "8081:8081"
+
+  # =====================================
+  # 🧭 DRIVER SERVICE (Spring Boot + Redis)
+  # =====================================
+  driver-redis:
+    image: redis:7-alpine
+    container_name: driver-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  driver-service:
+    build: ./services/driver-service
+    container_name: driver-service
+    restart: unless-stopped
+    depends_on:
+      driver-redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: driver-redis
+      REDIS_PORT: 6379
+    ports:
+      - "8082:8082"
+
+  # =====================================
+  # ⚙️ KONG API GATEWAY (DB-less)
+  # =====================================
+  kong:
+    image: kong:3.6
+    container_name: kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_LOG_LEVEL: debug
+    ports:
+      - "8000:8000" # Public requests (Gateway)
+      - "8001:8001" # Admin API
+    volumes:
+      - ./kong/kong.yml:/usr/local/kong/declarative/kong.yml
+    depends_on:
+      user-service:
+        condition: service_started
+      trip-service:
+        condition: service_started
+      driver-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# =====================================
+# 📦 VOLUMES
+# =====================================
+volumes:
+  user_postgres_data:
+  trip_postgres_data:
+ 

@@ -1,0 +1,23 @@
+_format_version: "3.0"
+
+services:
+  - name: user-service
+    url: http://user-service:3000
+    routes:
+      - name: user-route
+        paths:
+          - /users
+
+  - name: trip-service
+    url: http://trip-service:8081
+    routes:
+      - name: trip-route
+        paths:
+          - /trips
+
+  - name: driver-service
+    url: http://driver-service:8082
+    routes:
+      - name: driver-route
+        paths:
+          - /drivers
