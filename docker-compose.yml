@@ -134,7 +134,6 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-    command: npm run start:dev
 
   # =====================================
   # KONG API GATEWAY (DB-less)
