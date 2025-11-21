@@ -42,4 +42,6 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
-CMD ["node", "dist/main"]
+
+# Run migration and start app
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
