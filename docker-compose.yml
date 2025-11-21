@@ -35,7 +35,6 @@ services:
     depends_on:
       user-postgres:
         condition: service_healthy
-    command: sh -c "npx prisma migrate deploy && node dist/main"
 
   # =====================================
   # TRIP SERVICE (Spring Boot)
