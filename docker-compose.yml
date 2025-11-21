@@ -99,6 +99,7 @@ services:
       REDIS_PORT: 6379
     ports:
       - "8082:8082"
+      - "5005:5005"
 
   # =====================================
   # KONG API GATEWAY (DB-less)
@@ -132,6 +133,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+# =====================================
+# RabbitMQ SERVICE
+# =====================================  
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"     # RabbitMQ main port
+      - "15672:15672"   # RabbitMQ management UI
 
 # =====================================
 # VOLUMES
