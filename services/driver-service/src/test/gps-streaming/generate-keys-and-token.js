@@ -30,7 +30,7 @@ const token = jwt.sign(
   privateKey,
   {
     algorithm: "RS256",
-    expiresIn: "1h",
+    expiresIn: "12h",
   }
 );
 
