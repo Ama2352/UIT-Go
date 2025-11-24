@@ -20,18 +20,31 @@ public class DriverLocationWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final DriverService driverService;
 
+    @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        log.info("Driver WebSocket connected: {}", session.getId());
-        // TODO: authenticate + attach driverId to session attributes if needed
-
+        String driverId = (String) session.getAttributes().get("driverId");
+        log.info("Driver connected: {}", driverId);
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         try {
             var payload = objectMapper.readValue(message.getPayload(), DriverLocationMessage.class);
-            // TODO: cross-check payload.driverId with authenticated driver in session
+
+            // 1. Authenticate identity from WebSocket session
+            String authenticatedDriverId = (String) session.getAttributes().get("driverId");
+
+            // 2. Security check - prevent impersonation
+            if (!payload.driverId().equals(authenticatedDriverId)) {
+                log.warn("Driver {} attempted to send location for driver {}", authenticatedDriverId,
+                        payload.driverId());
+                session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Invalid driver identity"));
+                return;
+            }
+
+            // 3. Process location
             driverService.handleStreamingLocation(payload);
+
         } catch (Exception ex) {
             log.warn("Failed to process WS message: {}", message.getPayload());
             log.error("Exception details:", ex);
