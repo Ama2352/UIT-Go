@@ -64,6 +64,8 @@ services:
     depends_on:
       trip-postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: ${TRIPDB_URL}
       SPRING_DATASOURCE_USERNAME: ${TRIPDB_USERNAME}
@@ -167,6 +169,23 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # =====================================
+  # RabbitMQ
+  # =====================================
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # AMQP (service connect)
+      - "15672:15672"  # UI
+    healthcheck:
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
 # =====================================
 # RabbitMQ SERVICE

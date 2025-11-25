@@ -1,11 +1,18 @@
 package se360.driver_service.controllers;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
+import se360.driver_service.messaging.publisher.TripEventPublisher;
+import se360.driver_service.messaging.events.TripAssignedEvent;
 import se360.driver_service.services.DriverService;
 
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
@@ -13,6 +20,7 @@ import java.util.List;
 public class DriverController {
 
     private final DriverService driverService;
+    private final TripEventPublisher eventPublisher;
 
     @PutMapping("/{driverId}/online")
     public ResponseEntity<String> goOnline(@PathVariable String driverId) {
@@ -43,6 +51,25 @@ public class DriverController {
         List<String> drivers = driverService.findNearbyDrivers(lat, lng, radiusInKm);
         return ResponseEntity.ok(drivers);
     }
+
+    @PutMapping("/{driverId}/trips/{tripId}/accept")
+    public ResponseEntity<String> acceptTrip(
+            @PathVariable UUID driverId,
+            @PathVariable UUID tripId
+    ) {
+        TripAssignedEvent event = TripAssignedEvent.builder()
+                .tripId(tripId)
+                .driverId(driverId)
+                .build();
+
+        eventPublisher.publishTripAssigned(event);
+
+        return ResponseEntity.ok("Driver accepted trip & event published!");
+    }
+
+
+
+
 
     @GetMapping("/ping")
     public String ping() {
