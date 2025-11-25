@@ -7,6 +7,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 
 import lombok.RequiredArgsConstructor;
 import se360.driver_service.websocket.DriverLocationWebSocketHandler;
+import se360.driver_service.websocket.JwtHandshakeInterceptor;
 
 @Configuration
 @EnableWebSocket
@@ -14,9 +15,11 @@ import se360.driver_service.websocket.DriverLocationWebSocketHandler;
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final DriverLocationWebSocketHandler driverLocationWebSocketHandler;
+    private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
 
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(driverLocationWebSocketHandler, "/ws/drivers")
+                .addInterceptors(jwtHandshakeInterceptor)
                 .setAllowedOrigins("*");
     }
 }
