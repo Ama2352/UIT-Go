@@ -1,6 +1,15 @@
 # Global ignore
 *.env
 
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+**/localstack-data/
+
 node_modules/
 dist/
 build/
