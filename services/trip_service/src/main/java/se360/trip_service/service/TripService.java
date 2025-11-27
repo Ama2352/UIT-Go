@@ -146,7 +146,7 @@ public class TripService {
     public Optional<TripResponse> startTrip(UUID id) {
         return tripRepository.findById(id).map(trip -> {
 
-            if (trip.getTripStatus() != TripStatus.ACCEPTED) {
+            if (trip.getTripStatus() != TripStatus.ASSIGNED) {
                 throw new IllegalStateException("Trip must be accepted before starting.");
             }
 
