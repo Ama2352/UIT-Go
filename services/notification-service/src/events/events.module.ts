@@ -4,8 +4,7 @@ import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
 import { NotificationModule } from '../notifications/notification.module';
 
 @Module({
-  imports: [RabbitMQModule, NotificationModule],
-  providers: [EventConsumer],
+    imports: [RabbitMQModule, NotificationModule],
+    providers: [EventConsumer],
 })
 export class EventsModule {}
-

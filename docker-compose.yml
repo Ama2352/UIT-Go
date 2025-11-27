@@ -170,36 +170,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # =====================================
-  # RabbitMQ
-  # =====================================
-  rabbitmq:
-    image: rabbitmq:4-management
-    container_name: rabbitmq
-    restart: unless-stopped
-    ports:
-      - "5672:5672"   # AMQP (service connect)
-      - "15672:15672"  # UI
-    healthcheck:
-      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-
-# =====================================
-# RabbitMQ SERVICE
-# =====================================  
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"     # RabbitMQ main port
-      - "15672:15672"   # RabbitMQ management UI
-
-# =====================================
-# VOLUMES
-# =====================================
 volumes:
   user_postgres_data:
   trip_postgres_data:

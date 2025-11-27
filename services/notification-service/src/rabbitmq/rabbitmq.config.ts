@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 
 export const getRabbitMQConfig = (configService: ConfigService): ClientsModuleOptions => [
   {
-    name: 'RABBITMQ_SERVICE',
+    name: 'TRIP_EVENT',
     transport: Transport.RMQ,
     options: {
       urls: [configService.get<string>('RABBITMQ_URL') || 'amqp://localhost:5672'],
