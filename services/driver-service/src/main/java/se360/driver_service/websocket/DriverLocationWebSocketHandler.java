@@ -21,7 +21,7 @@ public class DriverLocationWebSocketHandler extends TextWebSocketHandler {
     private final DriverService driverService;
 
     public void afterConnectionEstablished(WebSocketSession session) {
-        String driverId = (String) session.getAttributes().get("driverId");
+        String driverId = (String) session.getAttributes().get("sub");
         log.info("Driver WebSocket connected: {} (Driver: {})", session.getId(), driverId);
     }
 
@@ -30,7 +30,7 @@ public class DriverLocationWebSocketHandler extends TextWebSocketHandler {
         try {
             var payload = objectMapper.readValue(message.getPayload(), DriverLocationMessage.class);
 
-            String authenticatedDriverId = (String) session.getAttributes().get("driverId");
+            String authenticatedDriverId = (String) session.getAttributes().get("sub");
 
             if (!payload.driverId().equals(authenticatedDriverId)) {
                 log.warn("Driver {} attempted to send location for driver {}", authenticatedDriverId,
