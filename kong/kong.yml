@@ -7,6 +7,7 @@ services:
       - name: user-route
         paths:
           - /users
+          - /sessions
         strip_path: false
 
   - name: trip-service
