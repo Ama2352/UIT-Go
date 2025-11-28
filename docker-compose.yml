@@ -68,6 +68,8 @@ services:
     depends_on:
       trip-postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: ${TRIPDB_URL}
       SPRING_DATASOURCE_USERNAME: ${TRIPDB_USERNAME}
@@ -177,9 +179,7 @@ services:
       timeout: 5s
       retries: 5
 
-# =====================================
-# VOLUMES
-# =====================================
+
 volumes:
   user_postgres_data:
   trip_postgres_data:

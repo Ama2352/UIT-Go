@@ -6,6 +6,8 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
 import se360.trip_service.mapper.TripMapper;
+import se360.trip_service.messaging.events.*;
+import se360.trip_service.messaging.publisher.TripEventPublisher;
 import se360.trip_service.model.dtos.CreateTripRequest;
 import se360.trip_service.model.dtos.TripResponse;
 import se360.trip_service.model.dtos.EstimateFareResponse;
@@ -20,7 +22,6 @@ import se360.trip_service.repository.TripRatingRepository;
 import se360.trip_service.util.DistanceUtil;
 import se360.trip_service.model.dtos.TripRatingResponse;
 
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -28,17 +29,16 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.List;
 
-
-
 @Service
 @RequiredArgsConstructor
 public class TripService {
 
+    private final TripEventPublisher eventPublisher;
     private final TripRepository tripRepository;
     private final TripMapper tripMapper;
     private final TripRatingRepository tripRatingRepository;
 
-
+    // ░░░ ESTIMATE FARE ░░░
     public EstimateFareResponse estimateFare(EstimateFareRequest req) {
         BigDecimal distanceKm = DistanceUtil.calculateDistanceKm(
                 req.getPickupLat(),
@@ -53,17 +53,15 @@ public class TripService {
                 distanceKm.setScale(2, RoundingMode.HALF_UP),
                 estimatedPrice.setScale(0, RoundingMode.HALF_UP)
         );
-
     }
 
-
+    // ░░░ CREATE TRIP + publish trip.requested ░░░
     public TripResponse createTrip(CreateTripRequest req) {
         Trip trip = tripMapper.toEntity(req);
 
         trip.setTripStatus(TripStatus.SEARCHING);
         trip.setCreatedAt(LocalDateTime.now());
         trip.setUpdatedAt(LocalDateTime.now());
-
 
         BigDecimal distanceKm = DistanceUtil.calculateDistanceKm(
                 req.getPickupLat(),
@@ -76,11 +74,21 @@ public class TripService {
         trip.setEstimatedPrice(calculateFare(distanceKm, req.getVehicleType(), false));
 
         Trip savedTrip = tripRepository.save(trip);
+
+        TripRequestedEvent event = TripRequestedEvent.builder()
+                .tripId(savedTrip.getId())
+                .passengerId(savedTrip.getPassengerId())
+                .pickupLat(savedTrip.getPickupLat().doubleValue())
+                .pickupLng(savedTrip.getPickupLng().doubleValue())
+                .dropoffLat(savedTrip.getDropoffLat().doubleValue())
+                .dropoffLng(savedTrip.getDropoffLng().doubleValue())
+                .vehicleType(savedTrip.getVehicleType().name())
+                .build();
+
+        eventPublisher.publishTripRequested(event);
+
         return tripMapper.toResponse(savedTrip);
     }
-
-
-
 
     public List<TripResponse> getAllTrips() {
         return tripRepository.findAll()
@@ -89,29 +97,40 @@ public class TripService {
                 .toList();
     }
 
-
     public Optional<TripResponse> getTripById(UUID id) {
         return tripRepository.findById(id)
                 .map(tripMapper::toResponse);
     }
 
-
+    // ░░░ CANCEL TRIP + publish trip.cancelled ░░░
     public Optional<TripResponse> cancelTrip(UUID id, String cancelledBy) {
         return tripRepository.findById(id).map(trip -> {
+
             if (trip.getTripStatus() != TripStatus.SEARCHING &&
                     trip.getTripStatus() != TripStatus.ACCEPTED) {
-                throw new IllegalStateException("The trip can only be canceled before it has started.");
+                throw new IllegalStateException("Trip can only be cancelled before started.");
             }
+
             trip.setTripStatus(TripStatus.CANCELLED);
             trip.setCancelledBy(cancelledBy);
             trip.setCancelledAt(LocalDateTime.now());
             trip.setUpdatedAt(LocalDateTime.now());
+
             Trip saved = tripRepository.save(trip);
+
+            TripCancelledEvent event = TripCancelledEvent.builder()
+                    .tripId(saved.getId())
+                    .passengerId(saved.getPassengerId())
+                    .cancelledBy(saved.getCancelledBy())
+                    .build();
+
+            eventPublisher.publishTripCancelled(event);
+
             return tripMapper.toResponse(saved);
         });
     }
 
-
+    // ░░░ ACCEPT TRIP ░░░
     public Optional<TripResponse> acceptTrip(UUID id, UUID driverId) {
         return tripRepository.findById(id).map(trip -> {
             trip.setDriverId(driverId);
@@ -123,21 +142,71 @@ public class TripService {
         });
     }
 
+    // ░░░ START TRIP + publish trip.started ░░░
     public Optional<TripResponse> startTrip(UUID id) {
         return tripRepository.findById(id).map(trip -> {
-            if (trip.getTripStatus() != TripStatus.ACCEPTED) {
-                throw new IllegalStateException("Trip must be accepted before starting");
+
+            if (trip.getTripStatus() != TripStatus.ASSIGNED) {
+                throw new IllegalStateException("Trip must be accepted before starting.");
             }
+
             trip.setTripStatus(TripStatus.IN_PROGRESS);
+            trip.setUpdatedAt(LocalDateTime.now());
+
+            Trip saved = tripRepository.save(trip);
+
+            TripStartedEvent event = TripStartedEvent.builder()
+                    .tripId(saved.getId())
+                    .driverId(saved.getDriverId())
+                    .passengerId(saved.getPassengerId())
+                    .build();
+
+            eventPublisher.publishTripStarted(event);
+
+            return tripMapper.toResponse(saved);
+        });
+    }
+
+    // ░░░ COMPLETE TRIP + publish trip.completed ░░░
+    public Optional<TripResponse> completeTrip(UUID id) {
+        return tripRepository.findById(id).map(trip -> {
+
+            if (trip.getTripStatus() != TripStatus.IN_PROGRESS) {
+                throw new IllegalStateException("Trip must be in-progress to complete.");
+            }
+
+            trip.setTripStatus(TripStatus.COMPLETED);
+            trip.setCompletedAt(LocalDateTime.now());
+            trip.setUpdatedAt(LocalDateTime.now());
+            trip.setFinalPrice(trip.getEstimatedPrice());
+
+            Trip saved = tripRepository.save(trip);
+
+            TripCompletedEvent event = TripCompletedEvent.builder()
+                    .tripId(saved.getId())
+                    .driverId(saved.getDriverId())
+                    .passengerId(saved.getPassengerId())
+                    .finalPrice(saved.getFinalPrice())
+                    .build();
+
+            eventPublisher.publishTripCompleted(event);
+
+            return tripMapper.toResponse(saved);
+        });
+    }
+
+    // Utility update
+    public Optional<TripResponse> updateStatus(UUID id, TripStatus status) {
+        return tripRepository.findById(id).map(trip -> {
+            trip.setTripStatus(status);
             trip.setUpdatedAt(LocalDateTime.now());
             Trip saved = tripRepository.save(trip);
             return tripMapper.toResponse(saved);
         });
-
-
     }
 
     public TripRatingResponse rateTrip(UUID tripId, RateTripRequest request) {
+
         Trip trip = tripRepository.findById(tripId)
                 .orElseThrow(() -> new IllegalArgumentException("Trip not found"));
 
@@ -158,31 +227,7 @@ public class TripService {
         return tripMapper.toRatingResponse(saved);
     }
 
-
-    public Optional<TripResponse> completeTrip(UUID id) {
-        return tripRepository.findById(id).map(trip -> {
-            if (trip.getTripStatus() != TripStatus.IN_PROGRESS) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Trip must be accepted before starting");
-            }
-            trip.setTripStatus(TripStatus.COMPLETED);
-            trip.setCompletedAt(LocalDateTime.now());
-            trip.setUpdatedAt(LocalDateTime.now());
-            trip.setFinalPrice(trip.getEstimatedPrice());
-            Trip saved = tripRepository.save(trip);
-            return tripMapper.toResponse(saved);
-        });
-    }
-
-    public Optional<TripResponse> updateStatus(UUID id, TripStatus status) {
-        return tripRepository.findById(id).map(trip -> {
-            trip.setTripStatus(status);
-            trip.setUpdatedAt(LocalDateTime.now());
-            Trip saved = tripRepository.save(trip);
-            return tripMapper.toResponse(saved);
-        });
-    }
-
+    // FARE CALCULATION
     public BigDecimal calculateFare(BigDecimal distanceKm, VehicleType type, boolean isPeakHour) {
         BigDecimal baseFare;
         BigDecimal perKmRate;
