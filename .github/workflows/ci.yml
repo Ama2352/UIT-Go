@@ -1,11 +1,13 @@
 # =============================================================================
-# CI Workflow - Build and Test All Services
+# CI Workflow - Build Docker Images for All Services
 # =============================================================================
-# Runs on: Push to main/develop/feature branches, Pull Requests to main
+# Runs on: Push to main/feature branches, Pull Requests to main
 # What it does:
-#   1. Tests each microservice
-#   2. Builds Docker images
-#   3. Pushes images to GitHub Container Registry (on main branch only)
+#   1. Builds Docker images for each service (same as docker-compose build)
+#   2. Pushes images to GitHub Container Registry (on main branch only)
+#
+# NOTE: This CI uses Docker to build services, matching how docker-compose runs.
+#       The Dockerfiles handle all build steps (Maven, npm, etc.) internally.
 # =============================================================================
 
 name: CI - Build and Test
@@ -13,7 +15,7 @@ name: CI - Build and Test
 on:
   push:
     branches: 
-      # - main
+      - main
       - feature/terraform-azure-cicd
   pull_request:
     branches: [main]
@@ -25,48 +27,27 @@ env:
 jobs:
   # =========================================
   # User Service (NestJS + Prisma)
+  # Dockerfile: multi-stage build with npm
   # =========================================
   user-service:
     name: 🔐 User Service
     runs-on: ubuntu-latest
     
-    defaults:
-      run:
-        working-directory: ./services/user-service
-    
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
       
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: ./services/user-service/package-lock.json
-      
-      - name: 📚 Install dependencies
-        run: npm ci
-      
-      - name: 🔍 Run linter
-        run: npm run lint || true  # Don't fail on lint warnings
-      
-      - name: 🧪 Run tests
-        run: npm run test || true  # Tests may not be fully set up yet
-      
-      - name: 🏗️ Build application
-        run: npm run build
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       
       - name: 🔑 Login to Container Registry
-        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: 🐳 Build and push Docker image
-        if: github.ref == 'refs/heads/main'
+      - name: 🏗️ Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./services/user-service
@@ -74,45 +55,32 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-user-service:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-user-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # =========================================
   # Trip Service (Spring Boot)
+  # Dockerfile: multi-stage build with Maven
   # =========================================
   trip-service:
     name: 🚗 Trip Service
     runs-on: ubuntu-latest
     
-    defaults:
-      run:
-        working-directory: ./services/trip_service
-    
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
       
-      - name: ☕ Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
-      
-      - name: 🧪 Run tests
-        run: ./mvnw test || true  # Tests may not be fully set up yet
-      
-      - name: 🏗️ Build application
-        run: ./mvnw package -DskipTests
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       
       - name: 🔑 Login to Container Registry
-        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: 🐳 Build and push Docker image
-        if: github.ref == 'refs/heads/main'
+      - name: 🏗️ Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./services/trip_service
@@ -120,45 +88,32 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-trip-service:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-trip-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # =========================================
   # Driver Service (Spring Boot + Redis)
+  # Dockerfile: multi-stage build with Maven
   # =========================================
   driver-service:
     name: 🚕 Driver Service
     runs-on: ubuntu-latest
     
-    defaults:
-      run:
-        working-directory: ./services/driver-service
-    
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
       
-      - name: ☕ Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
-      
-      - name: 🧪 Run tests
-        run: ./mvnw test || true
-      
-      - name: 🏗️ Build application
-        run: ./mvnw package -DskipTests
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       
       - name: 🔑 Login to Container Registry
-        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: 🐳 Build and push Docker image
-        if: github.ref == 'refs/heads/main'
+      - name: 🏗️ Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./services/driver-service
@@ -166,42 +121,23 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-driver-service:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-driver-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # =========================================
   # Notification Service (NestJS + RabbitMQ)
+  # TEMPORARILY DISABLED - Uncomment when ready
   # =========================================
-  # TEMPORARILY DISABLED - Uncomment when notification-service is ready
-  # This service uses RabbitMQ which conflicts with driver-service's RabbitMQ
   # notification-service:
   #   name: 📢 Notification Service
   #   runs-on: ubuntu-latest
-  #   
-  #   defaults:
-  #     run:
-  #       working-directory: ./services/notification-service
   #   
   #   steps:
   #     - name: 📥 Checkout code
   #       uses: actions/checkout@v4
   #     
-  #     - name: 📦 Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: '20'
-  #         cache: 'npm'
-  #         cache-dependency-path: ./services/notification-service/package-lock.json
-  #     
-  #     - name: 📚 Install dependencies
-  #       run: npm ci
-  #     
-  #     - name: 🔍 Run linter
-  #       run: npm run lint || true
-  #     
-  #     - name: 🧪 Run tests
-  #       run: npm run test || true
-  #     
-  #     - name: 🏗️ Build application
-  #       run: npm run build
+  #     - name: 🐳 Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
   #     
   #     - name: 🔑 Login to Container Registry
   #       if: github.ref == 'refs/heads/main'
@@ -211,15 +147,16 @@ jobs:
   #         username: ${{ github.actor }}
   #         password: ${{ secrets.GITHUB_TOKEN }}
   #     
-  #     - name: 🐳 Build and push Docker image
-  #       if: github.ref == 'refs/heads/main'
+  #     - name: 🏗️ Build Docker image
   #       uses: docker/build-push-action@v5
   #       with:
   #         context: ./services/notification-service
-  #         push: true
+  #         push: ${{ github.ref == 'refs/heads/main' }}
   #         tags: |
   #           ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-notification-service:latest
   #           ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-notification-service:${{ github.sha }}
+  #         cache-from: type=gha
+  #         cache-to: type=gha,mode=max
 
   # =========================================
   # Summary Job - Reports overall status
@@ -227,8 +164,7 @@ jobs:
   ci-success:
     name: ✅ CI Success
     runs-on: ubuntu-latest
-    # NOTE: notification-service temporarily removed from dependencies
     needs: [user-service, trip-service, driver-service]
     steps:
       - name: All services built successfully
-        run: echo "🎉 All services built and tested successfully!"
+        run: echo "🎉 All Docker images built successfully!"
