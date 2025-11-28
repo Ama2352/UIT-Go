@@ -22,6 +22,29 @@ module "network" {
 }
 
 # -----------------------------------------------------------------------------
+# Compute Module (Azure VM to host the entire project)
+# -----------------------------------------------------------------------------
+module "compute" {
+  source = "./modules/compute"
+  count  = var.enable_vm ? 1 : 0
+
+  cloud_provider      = var.cloud_provider
+  project_name        = var.project_name
+  region              = var.region
+  resource_group_name = module.network.resource_group_name
+  subnet_id           = length(module.network.public_subnet_ids) > 0 ? module.network.public_subnet_ids[0] : ""
+
+  # VM Configuration
+  vm_size             = var.vm_size
+  admin_username      = var.vm_admin_username
+  ssh_public_key_path = var.ssh_public_key_path
+  os_disk_size_gb     = var.vm_os_disk_size_gb
+  data_disk_size_gb   = var.vm_data_disk_size_gb
+  allowed_ssh_cidr    = var.allowed_ssh_cidr
+  enable_public_ip    = true
+}
+
+# -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
 
@@ -48,5 +71,23 @@ output "private_subnet_ids" {
 output "resource_group_name" {
   description = "Azure Resource Group name (only for Azure)"
   value       = module.network.resource_group_name
+}
+
+# -----------------------------------------------------------------------------
+# VM Outputs (only when VM is enabled)
+# -----------------------------------------------------------------------------
+output "vm_public_ip" {
+  description = "Public IP address of the VM"
+  value       = var.enable_vm ? module.compute[0].vm_public_ip : ""
+}
+
+output "vm_ssh_command" {
+  description = "SSH command to connect to the VM"
+  value       = var.enable_vm ? module.compute[0].ssh_connection_string : ""
+}
+
+output "vm_private_ip" {
+  description = "Private IP address of the VM"
+  value       = var.enable_vm ? module.compute[0].vm_private_ip : ""
 }
 

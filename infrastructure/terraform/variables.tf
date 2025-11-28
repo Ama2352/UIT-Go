@@ -78,3 +78,48 @@ variable "azure_subscription_id" {
   default     = ""
   sensitive   = true
 }
+
+# -----------------------------------------------------------------------------
+# Compute Settings (VM Configuration)
+# -----------------------------------------------------------------------------
+variable "enable_vm" {
+  description = "Whether to create a VM to host the project"
+  type        = bool
+  default     = false
+}
+
+variable "vm_size" {
+  description = "Size of the VM. Recommended: Standard_B2ms (dev), Standard_D2s_v3 (prod)"
+  type        = string
+  default     = "Standard_B2ms"
+}
+
+variable "vm_admin_username" {
+  description = "Admin username for the VM"
+  type        = string
+  default     = "azureuser"
+}
+
+variable "ssh_public_key_path" {
+  description = "Path to SSH public key file for VM access"
+  type        = string
+  default     = "~/.ssh/id_rsa.pub"
+}
+
+variable "vm_os_disk_size_gb" {
+  description = "Size of the OS disk in GB"
+  type        = number
+  default     = 64
+}
+
+variable "vm_data_disk_size_gb" {
+  description = "Size of the data disk in GB (for Docker volumes)"
+  type        = number
+  default     = 100
+}
+
+variable "allowed_ssh_cidr" {
+  description = "CIDR block allowed to SSH into the VM (restrict in production!)"
+  type        = string
+  default     = "0.0.0.0/0"
+}

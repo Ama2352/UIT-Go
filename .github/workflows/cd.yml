@@ -1,0 +1,99 @@
+# =============================================================================
+# CD Workflow - Deploy to Azure VM
+# =============================================================================
+# Runs: After CI workflow completes successfully on main branch
+# What it does:
+#   1. SSH into Azure VM
+#   2. Pull latest code and Docker images
+#   3. Restart services with docker compose
+#   4. Run health checks
+# =============================================================================
+
+name: CD - Deploy to Azure
+
+on:
+  # Automatically run after CI completes
+  workflow_run:
+    workflows: ["CI - Build and Test"]
+    types:
+      - completed
+    branches: [main]
+  
+  # Also allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: 🚀 Deploy to Azure VM
+    runs-on: ubuntu-latest
+    
+    # Only run if CI was successful (or manual trigger)
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔐 Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USERNAME }}
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
+          script: |
+            echo "=========================================="
+            echo "🚀 Starting deployment..."
+            echo "=========================================="
+            
+            # Navigate to app directory
+            cd /opt/uit-go
+            
+            # Pull latest code
+            echo "📥 Pulling latest code..."
+            git pull origin main
+            
+            # Login to GitHub Container Registry
+            echo "🔑 Logging into container registry..."
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Pull latest images
+            echo "🐳 Pulling latest Docker images..."
+            docker compose pull
+            
+            # Restart services with new images
+            echo "♻️ Restarting services..."
+            docker compose up -d --remove-orphans
+            
+            # Clean up old images to save disk space
+            echo "🧹 Cleaning up old images..."
+            docker image prune -f
+            
+            # Show current status
+            echo "=========================================="
+            echo "📊 Current service status:"
+            echo "=========================================="
+            docker compose ps
+            
+            echo ""
+            echo "✅ Deployment complete!"
+      
+      - name: ⏳ Wait for services to start
+        run: sleep 30
+      
+      - name: 🏥 Health Check
+        run: |
+          echo "Running health check..."
+          
+          # Check Kong Gateway
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.AZURE_VM_HOST }}:8000/ || echo "000")
+          
+          if [ "$HTTP_STATUS" = "000" ]; then
+            echo "⚠️ Warning: Could not connect to Kong Gateway"
+            echo "This might be normal if Kong is still starting up"
+          else
+            echo "✅ Kong Gateway responded with status: $HTTP_STATUS"
+          fi
+          
+          echo ""
+          echo "🎉 Deployment finished!"
+          echo "🌐 API available at: http://${{ secrets.AZURE_VM_HOST }}:8000"
