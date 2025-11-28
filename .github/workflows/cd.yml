@@ -17,7 +17,9 @@ on:
     workflows: ["CI - Build and Test"]
     types:
       - completed
-    branches: [main]
+    branches: 
+      - main
+      - feature/terraform-azure-cicd
   
   # Also allow manual trigger
   workflow_dispatch:
