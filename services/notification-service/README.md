@@ -5,7 +5,7 @@ Just the notification stuff. Connects to RabbitMQ, pushes to WebSocket.
 ## techstack
 - WebSocket (Socket.IO)
 - RabbitMQ consumer
-- JWT Auth (checks token on connect)
+- RSA JWT Auth (RS256, checks token on connect)
 - Health check endpoint
 
 ## How to run
@@ -13,7 +13,7 @@ Set `.env`:
 ```
 PORT=3000
 RABBITMQ_URL=amqp://user:pass@localhost:5672
-JWT_SECRET=secret
+JWT_PUBLIC_KEY_PATH=services/shared/public.pem
 ```
 
 Run:

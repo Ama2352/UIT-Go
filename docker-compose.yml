@@ -30,8 +30,12 @@ services:
       NODE_ENV: development
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      JWT_PRIVATE_KEY_PATH: /app/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/public.pem
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+    volumes:
+      - ./services/user-service/private.pem:/app/private.pem:ro
+      - ./services/shared/public.pem:/app/public.pem:ro
     depends_on:
       user-postgres:
         condition: service_healthy
@@ -98,9 +102,12 @@ services:
     environment:
       REDIS_HOST: driver-redis
       REDIS_PORT: 6379
+      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
     ports:
       - "8082:8082"
       - "5005:5005"
+    volumes:
+      - ./services/shared/public.pem:/app/keys/public.pem:ro
 
   # =====================================
   # NOTIFICATION SERVICE (NestJS + RabbitMQ)
@@ -132,7 +139,9 @@ services:
       NODE_ENV: development
       PORT: 3000
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_PUBLIC_KEY_PATH: /app/public.pem
+    volumes:
+      - ./services/shared/public.pem:/app/public.pem:ro
     depends_on:
       rabbitmq:
         condition: service_healthy
