@@ -1,20 +1,20 @@
 # =============================================================================
 # CD Workflow - Deploy to Azure VM
 # =============================================================================
-# Runs: After CI workflow completes successfully on main branch
+# Runs: After Terraform Apply creates/updates the VM, or manually
 # What it does:
 #   1. SSH into Azure VM
-#   2. Pull latest code and Docker images
-#   3. Restart services with docker compose
+#   2. Clone/pull latest code
+#   3. Start services with docker compose
 #   4. Run health checks
 # =============================================================================
 
 name: CD - Deploy to Azure
 
 on:
-  # Automatically run after CI completes
+  # Automatically run after Terraform workflow completes
   workflow_run:
-    workflows: ["CI - Build and Test"]
+    workflows: ["Infrastructure - Terraform"]
     types:
       - completed
     branches: 
@@ -23,87 +23,113 @@ on:
   
   # Allow manual trigger
   workflow_dispatch:
-  
-  # Also trigger on push to make workflow visible in Actions tab
-  push:
-    branches:
-      - main
-      - feature/terraform-azure-cicd
-    paths:
-      - '.github/workflows/cd.yml'  # Only trigger when cd.yml itself changes
 
 jobs:
   deploy:
-    name: 🚀 Deploy to Azure VM
+    name: Deploy to Azure VM
     runs-on: ubuntu-latest
     
-    # Run if: CI was successful, manual trigger, or push to cd.yml
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    # Run if: Terraform was successful (apply) or manual trigger
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     
     steps:
-      - name: 📥 Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: 🔐 Deploy via SSH
+      - name: Wait for VM to be ready
+        run: |
+          echo "Waiting 60 seconds for VM to finish cloud-init..."
+          sleep 60
+      
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.AZURE_VM_HOST }}
           username: ${{ secrets.AZURE_VM_USERNAME }}
           key: ${{ secrets.AZURE_VM_SSH_KEY }}
+          command_timeout: 10m
           script: |
             echo "=========================================="
-            echo "🚀 Starting deployment..."
+            echo "Starting deployment..."
             echo "=========================================="
+            
+            # Check if app directory exists, if not clone it
+            if [ ! -d "/opt/uit-go" ]; then
+              echo "Cloning repository for the first time..."
+              sudo mkdir -p /opt/uit-go
+              sudo chown $USER:$USER /opt/uit-go
+              git clone https://github.com/${{ github.repository }}.git /opt/uit-go
+            fi
             
             # Navigate to app directory
             cd /opt/uit-go
             
             # Pull latest code
-            echo "📥 Pulling latest code..."
-            git pull origin main
+            echo "Pulling latest code..."
+            git fetch origin
+            git checkout ${{ github.ref_name }} || git checkout main
+            git pull
             
-            # Login to GitHub Container Registry
-            echo "🔑 Logging into container registry..."
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            # Create .env file if it doesn't exist
+            if [ ! -f ".env" ]; then
+              echo "Creating .env file..."
+              cat > .env << 'EOF'
+            # Database - User Service
+            USERDB_USERNAME=postgres
+            USERDB_PASSWORD=postgres
+            USERDB_DATABASE=userdb
+            DATABASE_URL=postgresql://postgres:postgres@user-postgres:5432/userdb
             
-            # Pull latest images
-            echo "🐳 Pulling latest Docker images..."
-            docker compose pull
+            # Database - Trip Service
+            TRIPDB_USERNAME=postgres
+            TRIPDB_PASSWORD=postgres
+            TRIPDB_DATABASE=tripdb
+            TRIPDB_URL=jdbc:postgresql://trip-postgres:5432/tripdb
             
-            # Restart services with new images
-            echo "♻️ Restarting services..."
-            docker compose up -d --remove-orphans
+            # JWT
+            JWT_SECRET=your-super-secret-jwt-key-change-in-production
+            JWT_EXPIRES_IN=7d
             
-            # Clean up old images to save disk space
-            echo "🧹 Cleaning up old images..."
-            docker image prune -f
+            # RabbitMQ
+            RABBITMQ_USER=guest
+            RABBITMQ_PASSWORD=guest
+            EOF
+            fi
+            
+            # Build and start services
+            echo "Starting Docker Compose services..."
+            docker compose up -d --build
+            
+            # Wait for services to start
+            echo "Waiting for services to start..."
+            sleep 30
             
             # Show current status
             echo "=========================================="
-            echo "📊 Current service status:"
+            echo "Current service status:"
             echo "=========================================="
             docker compose ps
             
             echo ""
-            echo "✅ Deployment complete!"
+            echo "Deployment complete!"
       
-      - name: ⏳ Wait for services to start
-        run: sleep 30
-      
-      - name: 🏥 Health Check
+      - name: Health Check
         run: |
           echo "Running health check..."
+          
+          # Wait a bit more for services
+          sleep 10
           
           # Check Kong Gateway
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.AZURE_VM_HOST }}:8000/ || echo "000")
           
           if [ "$HTTP_STATUS" = "000" ]; then
-            echo "⚠️ Warning: Could not connect to Kong Gateway"
-            echo "This might be normal if Kong is still starting up"
+            echo "Warning: Could not connect to Kong Gateway"
+            echo "This might be normal if services are still starting up"
           else
-            echo "✅ Kong Gateway responded with status: $HTTP_STATUS"
+            echo "Kong Gateway responded with status: $HTTP_STATUS"
           fi
           
           echo ""
-          echo "🎉 Deployment finished!"
-          echo "🌐 API available at: http://${{ secrets.AZURE_VM_HOST }}:8000"
+          echo "Deployment finished!"
+          echo "API available at: http://${{ secrets.AZURE_VM_HOST }}:8000"
