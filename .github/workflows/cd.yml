@@ -21,8 +21,16 @@ on:
       - main
       - feature/terraform-azure-cicd
   
-  # Also allow manual trigger
+  # Allow manual trigger
   workflow_dispatch:
+  
+  # Also trigger on push to make workflow visible in Actions tab
+  push:
+    branches:
+      - main
+      - feature/terraform-azure-cicd
+    paths:
+      - '.github/workflows/cd.yml'  # Only trigger when cd.yml itself changes
 
 jobs:
   deploy:
