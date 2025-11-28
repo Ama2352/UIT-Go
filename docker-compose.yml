@@ -179,6 +179,22 @@ services:
       - "15672:15672"   # RabbitMQ management UI
 
 # =====================================
+# LOCALSTACK SERVICE
+# ===================================== 
+
+  localstack:
+      image: localstack/localstack:latest
+      ports:
+        - "4566:4566"
+        - "4571:4571"
+      environment:
+        - SERVICES=ec2,s3,iam,sts,lambda
+        - DEBUG=1
+      volumes:
+        - "./localstack-data:/var/lib/localstack"
+        - "/var/run/docker.sock:/var/run/docker.sock"
+
+# =====================================
 # VOLUMES
 # =====================================
 volumes:
