@@ -79,6 +79,27 @@ variable "azure_subscription_id" {
   sensitive   = true
 }
 
+variable "azure_client_id" {
+  description = "Azure Client ID"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "azure_client_secret" {
+  description = "Azure Client Secret"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "azure_tenant_id" {
+  description = "Azure Tenant ID"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # -----------------------------------------------------------------------------
 # Compute Settings (VM Configuration)
 # -----------------------------------------------------------------------------
