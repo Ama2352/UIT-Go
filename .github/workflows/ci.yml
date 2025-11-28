@@ -22,7 +22,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/uitgo
+  # Use lowercase for Docker image names (required by container registries)
+  IMAGE_PREFIX: ama2352/uitgo
 
 jobs:
   # =========================================
