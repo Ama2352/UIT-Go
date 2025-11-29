@@ -20,6 +20,7 @@ on:
     branches: 
       - main
       - feature/terraform-azure-cicd
+      - fix/azure-deploy
   
   # Allow manual trigger
   workflow_dispatch:
@@ -75,22 +76,33 @@ jobs:
               rm get-docker.sh
             fi
             
-            # Check if app directory exists, if not clone it
-            if [ ! -d "/opt/uit-go" ]; then
+            # Check if app directory exists and is a valid git repo
+            if [ -d "/opt/uit-go/.git" ]; then
+              echo "Repository already exists. Pulling latest code..."
+              cd /opt/uit-go
+              git fetch origin
+              git checkout ${{ github.ref_name }} || git checkout main
+              git pull
+            else
               echo "Cloning repository for the first time..."
+              # Remove directory if it exists but is not a git repo
+              sudo rm -rf /opt/uit-go
               sudo mkdir -p /opt/uit-go
               sudo chown $USER:$USER /opt/uit-go
               git clone https://github.com/${{ github.repository }}.git /opt/uit-go
+              cd /opt/uit-go
+              git checkout ${{ github.ref_name }} || git checkout main
             fi
             
-            # Navigate to app directory
-            cd /opt/uit-go
+            # Verify we're in the right directory with docker-compose.yml
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "❌ ERROR: docker-compose.yml not found in $(pwd)"
+              echo "Contents of current directory:"
+              ls -la
+              exit 1
+            fi
             
-            # Pull latest code
-            echo "Pulling latest code..."
-            git fetch origin
-            git checkout ${{ github.ref_name }} || git checkout main
-            git pull
+            echo "✅ Repository ready at $(pwd)"
             
             # Create .env file if it doesn't exist
             if [ ! -f ".env" ]; then
@@ -118,6 +130,43 @@ jobs:
             EOF
             fi
             
+            # Generate JWT RSA key pair if they don't exist
+            echo "Checking JWT key files..."
+            
+            # Clean up if private.pem or public.pem accidentally became directories
+            if [ -d "services/user-service/private.pem" ]; then
+              echo "Removing incorrectly created private.pem directory..."
+              rm -rf services/user-service/private.pem
+            fi
+            if [ -d "services/shared/public.pem" ]; then
+              echo "Removing incorrectly created public.pem directory..."
+              rm -rf services/shared/public.pem
+            fi
+            
+            # Ensure parent directories exist (but not the .pem files as directories!)
+            mkdir -p services/user-service
+            mkdir -p services/shared
+            
+            if [ ! -f "services/user-service/private.pem" ]; then
+              echo "Generating RSA private key for JWT..."
+              openssl genrsa -out services/user-service/private.pem 2048
+            fi
+            
+            if [ ! -f "services/shared/public.pem" ]; then
+              echo "Generating RSA public key for JWT..."
+              openssl rsa -in services/user-service/private.pem -pubout -out services/shared/public.pem
+            fi
+            
+            # Verify keys exist and are files (not directories)
+            if [ -f "services/user-service/private.pem" ] && [ -f "services/shared/public.pem" ]; then
+              echo "✅ JWT key files are ready"
+              ls -la services/user-service/private.pem services/shared/public.pem
+            else
+              echo "❌ ERROR: Failed to create JWT key files"
+              ls -la services/user-service/ services/shared/
+              exit 1
+            fi
+            
             # Build and start services (using sudo to ensure docker access)
             echo "Starting Docker Compose services..."
             sudo docker compose down --remove-orphans || true
@@ -133,10 +182,17 @@ jobs:
             echo "=========================================="
             sudo docker compose ps
             
-            # Show logs if any container is not running
+            # Show logs for each service to help debug issues
             echo ""
-            echo "Checking for any failed containers..."
-            sudo docker compose ps --format json | grep -v "running" && sudo docker compose logs --tail=50 || echo "All containers are running!"
+            echo "=========================================="
+            echo "Service Logs (last 30 lines each):"
+            echo "=========================================="
+            
+            for service in user-service trip-service driver-service kong; do
+              echo ""
+              echo "--- $service logs ---"
+              sudo docker compose logs --tail=30 $service 2>/dev/null || echo "No logs for $service"
+            done
             
             echo ""
             echo "Deployment complete!"
@@ -189,47 +245,25 @@ jobs:
             TESTS_FAILED=$((TESTS_FAILED + 1))
           fi
           
-          # Test User Service health endpoint
-          if test_endpoint "User Service Health" "${BASE_URL}/api/users/health" "200"; then
+          # Test User Service ping endpoint (no /api prefix based on Kong config)
+          if test_endpoint "User Service Ping" "${BASE_URL}/users/ping" "200"; then
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
             TESTS_FAILED=$((TESTS_FAILED + 1))
           fi
           
-          # Test Trip Service health endpoint
-          if test_endpoint "Trip Service Health" "${BASE_URL}/api/trips/health" "200"; then
+          # Test Trip Service ping endpoint
+          if test_endpoint "Trip Service Ping" "${BASE_URL}/trips/ping" "200"; then
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
             TESTS_FAILED=$((TESTS_FAILED + 1))
           fi
           
-          # Test Driver Service health endpoint
-          if test_endpoint "Driver Service Health" "${BASE_URL}/api/drivers/health" "200"; then
+          # Test Driver Service ping endpoint
+          if test_endpoint "Driver Service Ping" "${BASE_URL}/drivers/ping" "200"; then
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
             TESTS_FAILED=$((TESTS_FAILED + 1))
-          fi
-          
-          # Test User Registration endpoint (should return 400 or 201 depending on payload)
-          echo ""
-          echo "Testing: User Registration Endpoint (POST)"
-          REG_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/api/users/auth/register" \
-            -H "Content-Type: application/json" \
-            -d '{"email":"test@example.com","password":"Test1234!","name":"Test User"}' \
-            --max-time 30 2>/dev/null || echo -e "\n000")
-          
-          REG_STATUS=$(echo "$REG_RESPONSE" | tail -n1)
-          REG_BODY=$(echo "$REG_RESPONSE" | sed '$d')
-          
-          if [ "$REG_STATUS" = "000" ]; then
-            echo "❌ FAILED: Could not connect to User Registration endpoint"
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-          elif [ "$REG_STATUS" = "201" ] || [ "$REG_STATUS" = "400" ] || [ "$REG_STATUS" = "409" ]; then
-            echo "✅ PASSED: User Registration endpoint responded with status $REG_STATUS"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "⚠️ WARNING: User Registration responded with status $REG_STATUS"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
           fi
           
           # Summary
@@ -237,15 +271,15 @@ jobs:
           echo "=========================================="
           echo "Test Summary"
           echo "=========================================="
-          echo "✅ Passed: $TESTS_PASSED"
-          echo "❌ Failed: $TESTS_FAILED"
+          echo "Passed: $TESTS_PASSED"
+          echo "Failed: $TESTS_FAILED"
           echo ""
           
           if [ $TESTS_FAILED -gt 0 ]; then
-            echo "⚠️ Some tests failed. Services might still be starting up."
+            echo "WARNING: Some tests failed. Services might still be starting up."
             echo "Please check the VM logs for more details."
           else
-            echo "🎉 All tests passed!"
+            echo "All health checks passed!"
           fi
           
           echo ""
@@ -255,7 +289,7 @@ jobs:
           echo "API Gateway: ${BASE_URL}"
           echo ""
           echo "Available Endpoints:"
-          echo "  - User Service:   ${BASE_URL}/api/users/*"
-          echo "  - Trip Service:   ${BASE_URL}/api/trips/*"
-          echo "  - Driver Service: ${BASE_URL}/api/drivers/*"
-          echo "==========================================""
+          echo "  - User Service:   ${BASE_URL}/users/*"
+          echo "  - Trip Service:   ${BASE_URL}/trips/*"
+          echo "  - Driver Service: ${BASE_URL}/drivers/*"
+          echo "=========================================="

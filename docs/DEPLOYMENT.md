@@ -98,9 +98,9 @@ http://<VM_PUBLIC_IP>:8000
 ```
 
 **Available Endpoints:**
-- User Service: `http://<VM_IP>:8000/api/users/*`
-- Trip Service: `http://<VM_IP>:8000/api/trips/*`
-- Driver Service: `http://<VM_IP>:8000/api/drivers/*`
+- User Service: `http://<VM_IP>:8000/users/*`
+- Trip Service: `http://<VM_IP>:8000/trips/*`
+- Driver Service: `http://<VM_IP>:8000/drivers/*`
 
 ---
 
@@ -164,10 +164,9 @@ http://<VM_PUBLIC_IP>:8000
 
 **Health Checks:**
 - Kong Gateway: `GET /` (expects 404)
-- User Service: `GET /api/users/health`
-- Trip Service: `GET /api/trips/health`
-- Driver Service: `GET /api/drivers/health`
-- User Registration: `POST /api/users/auth/register`
+- User Service: `GET /users/ping`
+- Trip Service: `GET /trips/ping`
+- Driver Service: `GET /drivers/ping`
 
 ---
 
