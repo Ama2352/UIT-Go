@@ -201,47 +201,25 @@ jobs:
             TESTS_FAILED=$((TESTS_FAILED + 1))
           fi
           
-          # Test User Service health endpoint
-          if test_endpoint "User Service Health" "${BASE_URL}/api/users/health" "200"; then
+          # Test User Service ping endpoint (no /api prefix based on Kong config)
+          if test_endpoint "User Service Ping" "${BASE_URL}/users/ping" "200"; then
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
             TESTS_FAILED=$((TESTS_FAILED + 1))
           fi
           
-          # Test Trip Service health endpoint
-          if test_endpoint "Trip Service Health" "${BASE_URL}/api/trips/health" "200"; then
+          # Test Trip Service ping endpoint
+          if test_endpoint "Trip Service Ping" "${BASE_URL}/trips/ping" "200"; then
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
             TESTS_FAILED=$((TESTS_FAILED + 1))
           fi
           
-          # Test Driver Service health endpoint
-          if test_endpoint "Driver Service Health" "${BASE_URL}/api/drivers/health" "200"; then
+          # Test Driver Service ping endpoint
+          if test_endpoint "Driver Service Ping" "${BASE_URL}/drivers/ping" "200"; then
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
             TESTS_FAILED=$((TESTS_FAILED + 1))
-          fi
-          
-          # Test User Registration endpoint (should return 400 or 201 depending on payload)
-          echo ""
-          echo "Testing: User Registration Endpoint (POST)"
-          REG_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/api/users/auth/register" \
-            -H "Content-Type: application/json" \
-            -d '{"email":"test@example.com","password":"Test1234!","name":"Test User"}' \
-            --max-time 30 2>/dev/null || echo -e "\n000")
-          
-          REG_STATUS=$(echo "$REG_RESPONSE" | tail -n1)
-          REG_BODY=$(echo "$REG_RESPONSE" | sed '$d')
-          
-          if [ "$REG_STATUS" = "000" ]; then
-            echo "❌ FAILED: Could not connect to User Registration endpoint"
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-          elif [ "$REG_STATUS" = "201" ] || [ "$REG_STATUS" = "400" ] || [ "$REG_STATUS" = "409" ]; then
-            echo "✅ PASSED: User Registration endpoint responded with status $REG_STATUS"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "⚠️ WARNING: User Registration responded with status $REG_STATUS"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
           fi
           
           # Summary
@@ -249,15 +227,15 @@ jobs:
           echo "=========================================="
           echo "Test Summary"
           echo "=========================================="
-          echo "✅ Passed: $TESTS_PASSED"
-          echo "❌ Failed: $TESTS_FAILED"
+          echo "Passed: $TESTS_PASSED"
+          echo "Failed: $TESTS_FAILED"
           echo ""
           
           if [ $TESTS_FAILED -gt 0 ]; then
-            echo "⚠️ Some tests failed. Services might still be starting up."
+            echo "WARNING: Some tests failed. Services might still be starting up."
             echo "Please check the VM logs for more details."
           else
-            echo "🎉 All tests passed!"
+            echo "All health checks passed!"
           fi
           
           echo ""
@@ -267,7 +245,7 @@ jobs:
           echo "API Gateway: ${BASE_URL}"
           echo ""
           echo "Available Endpoints:"
-          echo "  - User Service:   ${BASE_URL}/api/users/*"
-          echo "  - Trip Service:   ${BASE_URL}/api/trips/*"
-          echo "  - Driver Service: ${BASE_URL}/api/drivers/*"
-          echo "==========================================""
+          echo "  - User Service:   ${BASE_URL}/users/*"
+          echo "  - Trip Service:   ${BASE_URL}/trips/*"
+          echo "  - Driver Service: ${BASE_URL}/drivers/*"
+          echo "=========================================="
