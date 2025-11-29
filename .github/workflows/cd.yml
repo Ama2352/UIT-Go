@@ -130,6 +130,29 @@ jobs:
             EOF
             fi
             
+            # Generate JWT RSA key pair if they don't exist
+            echo "Checking JWT key files..."
+            mkdir -p services/user-service
+            mkdir -p services/shared
+            
+            if [ ! -f "services/user-service/private.pem" ]; then
+              echo "Generating RSA private key for JWT..."
+              openssl genrsa -out services/user-service/private.pem 2048
+            fi
+            
+            if [ ! -f "services/shared/public.pem" ]; then
+              echo "Generating RSA public key for JWT..."
+              openssl rsa -in services/user-service/private.pem -pubout -out services/shared/public.pem
+            fi
+            
+            # Verify keys exist
+            if [ -f "services/user-service/private.pem" ] && [ -f "services/shared/public.pem" ]; then
+              echo "✅ JWT key files are ready"
+            else
+              echo "❌ ERROR: Failed to create JWT key files"
+              exit 1
+            fi
+            
             # Build and start services (using sudo to ensure docker access)
             echo "Starting Docker Compose services..."
             sudo docker compose down --remove-orphans || true
@@ -145,10 +168,17 @@ jobs:
             echo "=========================================="
             sudo docker compose ps
             
-            # Show logs if any container is not running
+            # Show logs for each service to help debug issues
             echo ""
-            echo "Checking for any failed containers..."
-            sudo docker compose ps --format json | grep -v "running" && sudo docker compose logs --tail=50 || echo "All containers are running!"
+            echo "=========================================="
+            echo "Service Logs (last 30 lines each):"
+            echo "=========================================="
+            
+            for service in user-service trip-service driver-service kong; do
+              echo ""
+              echo "--- $service logs ---"
+              sudo docker compose logs --tail=30 $service 2>/dev/null || echo "No logs for $service"
+            done
             
             echo ""
             echo "Deployment complete!"
