@@ -20,6 +20,7 @@ on:
     branches: 
       - main
       - feature/terraform-azure-cicd
+      - fix/azure-deploy
   
   # Allow manual trigger
   workflow_dispatch:

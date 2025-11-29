@@ -17,6 +17,7 @@ on:
     branches:
       - main
       - feature/terraform-azure-cicd
+      - fix/azure-deploy
     paths:
       - 'infrastructure/terraform/**'
       - '.github/workflows/terraform.yml'
@@ -63,14 +64,14 @@ jobs:
               echo "Creating resource group..."
               az group create \
                 --name ${{ env.TF_STATE_RG }} \
-                --location eastus
+                --location southeastasia
               
               # Create storage account
               echo "Creating storage account..."
               az storage account create \
                 --name ${{ env.TF_STATE_STORAGE }} \
                 --resource-group ${{ env.TF_STATE_RG }} \
-                --location eastus \
+                --location southeastasia \
                 --sku Standard_LRS \
                 --encryption-services blob
               
