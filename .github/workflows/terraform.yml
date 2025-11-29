@@ -54,41 +54,82 @@ jobs:
         with:
           azcliversion: latest
           inlineScript: |
-            # Check if storage account exists
-            if az storage account show --name ${{ env.TF_STATE_STORAGE }} --resource-group ${{ env.TF_STATE_RG }} &>/dev/null; then
-              echo "✅ Backend storage already exists. Skipping creation."
+            set -e  # Exit on any error
+            
+            LOCATION="southeastasia"
+            RG_NAME="${{ env.TF_STATE_RG }}"
+            STORAGE_NAME="${{ env.TF_STATE_STORAGE }}"
+            CONTAINER_NAME="${{ env.TF_STATE_CONTAINER }}"
+            
+            # Function to cleanup on failure
+            cleanup_on_failure() {
+              echo "❌ Error occurred. Rolling back..."
+              echo "Deleting resource group $RG_NAME (if exists)..."
+              az group delete --name "$RG_NAME" --yes --no-wait 2>/dev/null || true
+              echo "Rollback initiated. Resource group deletion is in progress."
+              exit 1
+            }
+            
+            # Check if storage account already exists and is accessible
+            if az storage account show --name "$STORAGE_NAME" --resource-group "$RG_NAME" &>/dev/null; then
+              echo "✅ Backend storage already exists. Verifying container..."
+              
+              # Verify container exists
+              if az storage container show --name "$CONTAINER_NAME" --account-name "$STORAGE_NAME" --auth-mode login &>/dev/null; then
+                echo "✅ Container exists. Backend is ready."
+              else
+                echo "Creating missing container..."
+                az storage container create \
+                  --name "$CONTAINER_NAME" \
+                  --account-name "$STORAGE_NAME" \
+                  --auth-mode login || cleanup_on_failure
+                echo "✅ Container created."
+              fi
             else
               echo "📦 Creating backend storage..."
               
-              # Create resource group
+              # Trap errors for rollback
+              trap cleanup_on_failure ERR
+              
+              # Create resource group (idempotent - won't fail if exists)
               echo "Creating resource group..."
               az group create \
-                --name ${{ env.TF_STATE_RG }} \
-                --location southeastasia
+                --name "$RG_NAME" \
+                --location "$LOCATION"
               
               # Create storage account
               echo "Creating storage account..."
               az storage account create \
-                --name ${{ env.TF_STATE_STORAGE }} \
-                --resource-group ${{ env.TF_STATE_RG }} \
-                --location southeastasia \
+                --name "$STORAGE_NAME" \
+                --resource-group "$RG_NAME" \
+                --location "$LOCATION" \
                 --sku Standard_LRS \
-                --encryption-services blob
+                --encryption-services blob \
+                --allow-blob-public-access false
+              
+              # Wait for storage account to be ready
+              echo "Waiting for storage account to be ready..."
+              sleep 10
               
               # Create blob container
               echo "Creating blob container..."
               az storage container create \
-                --name ${{ env.TF_STATE_CONTAINER }} \
-                --account-name ${{ env.TF_STATE_STORAGE }}
+                --name "$CONTAINER_NAME" \
+                --account-name "$STORAGE_NAME" \
+                --auth-mode login
+              
+              # Disable trap after success
+              trap - ERR
               
               echo "✅ Backend storage created successfully!"
             fi
             
             echo ""
             echo "Backend Configuration:"
-            echo "  Resource Group: ${{ env.TF_STATE_RG }}"
-            echo "  Storage Account: ${{ env.TF_STATE_STORAGE }}"
-            echo "  Container: ${{ env.TF_STATE_CONTAINER }}"
+            echo "  Resource Group: $RG_NAME"
+            echo "  Storage Account: $STORAGE_NAME"
+            echo "  Container: $CONTAINER_NAME"
+            echo "  Location: $LOCATION"
 
   # ============================================
   # Terraform Plan
