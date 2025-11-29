@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Driver WebSocket Map Demo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body { margin: 0; }
+    #map { height: 100vh; }
+    #panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: sans-serif;
+      z-index: 999;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="panel">
+    <b>UIT-Go Driver Location Demo</b><br>
+    WS status: <span id="status">Connecting...</span><br><br>
+
+    <label>Token:</label><br>
+    <textarea id="token" rows="3" style="width: 250px;">YOUR_JWT_TOKEN_HERE</textarea><br><br>
+
+    <label>Driver ID:</label><br>
+    <input id="driverId" value="driver-123" style="width: 250px;"><br><br>
+
+    <button id="connectBtn">Reconnect WebSocket</button>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <script>
+    // -------------------------------
+    // CREATE MAP
+    // -------------------------------
+    const map = L.map("map").setView([10.762622, 106.660172], 15);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+    }).addTo(map);
+
+    let marker = L.marker([10.762622, 106.660172], { draggable: true }).addTo(map);
+
+    // -------------------------------
+    // WEBSOCKET LOGIC (MIMICS NODE TEST)
+    // -------------------------------
+    let ws = null;
+
+    function connectWS() {
+      let token = document.getElementById("token").value.trim();
+      let driverId = document.getElementById("driverId").value.trim();
+
+      const url = token
+        ? `ws://localhost:8082/ws/driver-location?token=${token}`
+        : `ws://localhost:8082/ws/driver-location`;
+
+      console.log("\n🚀 Connecting to:", url);
+
+      document.getElementById("status").textContent = "Connecting...";
+
+      // SAFETY: Close old connection
+      if (ws) ws.close();
+
+      // ⭐ Attach error BEFORE anything else (same as Node test)
+      ws = new WebSocket(url);
+
+      ws.addEventListener("error", (err) => {
+        console.log("⚠️ ERROR (during handshake or runtime):", err);
+        document.getElementById("status").textContent = "Error";
+      }, { once: true });
+
+      ws.addEventListener("open", () => {
+        console.log("✅ WebSocket OPENED");
+        document.getElementById("status").textContent = "Connected";
+
+        const msg = {
+          driverId: driverId,
+          lat: marker.getLatLng().lat,
+          lng: marker.getLatLng().lng,
+          heading: 90,
+          speed: 20,
+          timestamp: new Date().toISOString(),
+        };
+
+        console.log("📤 Sending initial message:", msg);
+        ws.send(JSON.stringify(msg));
+      }, { once: true });
+
+      ws.addEventListener("close", (ev) => {
+        console.log(`❌ WebSocket CLOSED — code: ${ev.code}, reason: ${ev.reason}`);
+        document.getElementById("status").textContent = "Closed";
+      }, { once: true });
+
+      ws.addEventListener("message", (msg) => {
+        console.log("📩 Message:", msg.data);
+      });
+
+      // backup timeout
+      setTimeout(() => {
+        if (ws && ws.readyState !== WebSocket.OPEN) {
+          console.log("⏳ Timeout → no response, continuing...");
+        }
+      }, 3000);
+    }
+
+    // Initial connect
+    connectWS();
+
+    // Reconnect button
+    document.getElementById("connectBtn").onclick = () => {
+      connectWS();
+    };
+
+    // -------------------------------
+    // SEND MESSAGE WHEN DRIVER MOVES
+    // -------------------------------
+    function sendLocation() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+      const driverId = document.getElementById("driverId").value.trim();
+      const { lat, lng } = marker.getLatLng();
+
+      const msg = {
+        driverId,
+        lat,
+        lng,
+        heading: Math.floor(Math.random() * 360),
+        speed: (Math.random() * 40).toFixed(2),
+        timestamp: new Date().toISOString(),
+      };
+
+      console.log("📤 Sending:", msg);
+      ws.send(JSON.stringify(msg));
+    }
+
+    marker.on("dragend", sendLocation);
+    map.on("click", (e) => {
+      marker.setLatLng(e.latlng);
+      sendLocation();
+    });
+  </script>
+</body>
+</html>

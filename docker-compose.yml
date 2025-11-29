@@ -109,25 +109,25 @@ services:
     volumes:
       - ./services/shared/public.pem:/app/keys/public.pem:ro
 
-  # =====================================
-  # NOTIFICATION SERVICE (NestJS + RabbitMQ)
-  # =====================================
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # # =====================================
+  # # NOTIFICATION SERVICE (NestJS + RabbitMQ)
+  # # =====================================
+  # rabbitmq:
+  #   image: rabbitmq:3-management-alpine
+  #   container_name: rabbitmq
+  #   ports:
+  #     - "5672:5672"
+  #     - "15672:15672"
+  #   volumes:
+  #     - rabbitmq_data:/var/lib/rabbitmq
+  #   environment:
+  #     RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+  #     RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+  #   healthcheck:
+  #     test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
   notification-service:
     build: ./services/notification-service
@@ -180,6 +180,25 @@ services:
       retries: 5
 
 
+# =====================================
+# LOCALSTACK SERVICE
+# ===================================== 
+
+  localstack:
+      image: localstack/localstack:latest
+      ports:
+        - "4566:4566"
+        - "4571:4571"
+      environment:
+        - SERVICES=ec2,s3,iam,sts,lambda
+        - DEBUG=1
+      volumes:
+        - "./localstack-data:/var/lib/localstack"
+        - "/var/run/docker.sock:/var/run/docker.sock"
+
+# =====================================
+# VOLUMES
+# =====================================
 volumes:
   user_postgres_data:
   trip_postgres_data:

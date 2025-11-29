@@ -47,10 +47,10 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
             Claims claims = jws.getPayload();
             log.info("JWT validated successfully for driverId: {}", claims.getSubject());
 
-            attributes.put("sub", claims.getSubject());
-            attributes.put("role", claims.get("userType"));
+            attributes.put("driverId", claims.getSubject());
+            attributes.put("role", claims.get("role"));
 
-            if (!"DRIVER".equals(claims.get("userType"))) {
+            if (!"DRIVER".equals(claims.get("role"))) {
                 return false;
             }
             log.info("WebSocket handshake successful for driverId: {}", claims.getSubject());
@@ -68,4 +68,3 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
     }
 
 }
-
