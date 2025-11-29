@@ -275,6 +275,15 @@ jobs:
           echo "VM Public IP: ${{ steps.outputs.outputs.vm_ip }}"
           echo "SSH Command: ssh azureuser@${{ steps.outputs.outputs.vm_ip }}"
 
+  # ============================================
+  # Deploy Application (runs after successful apply)
+  # ============================================
+  deploy:
+    name: Deploy Application
+    needs: apply
+    uses: ./.github/workflows/cd.yml
+    secrets: inherit
+
 
   # ============================================
   # Terraform Destroy (All Resources)

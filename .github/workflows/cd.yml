@@ -1,7 +1,7 @@
 # =============================================================================
 # CD Workflow - Deploy to Azure VM
 # =============================================================================
-# Runs: After Terraform Apply creates/updates the VM, or manually
+# Runs: After Terraform Apply succeeds (called by terraform.yml), or manually
 # What it does:
 #   1. SSH into Azure VM
 #   2. Clone/pull latest code
@@ -12,15 +12,8 @@
 name: CD - Deploy to Azure
 
 on:
-  # Automatically run after Terraform workflow completes
-  workflow_run:
-    workflows: ["Infrastructure - Terraform"]
-    types:
-      - completed
-    branches: 
-      - main
-      - feature/terraform-azure-cicd
-      - fix/azure-deploy
+  # Called by Terraform workflow after successful apply
+  workflow_call:
   
   # Allow manual trigger
   workflow_dispatch:
@@ -29,9 +22,6 @@ jobs:
   deploy:
     name: Deploy to Azure VM
     runs-on: ubuntu-latest
-    
-    # Run if: Terraform was successful (apply) or manual trigger
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     
     steps:
       - name: Checkout code
