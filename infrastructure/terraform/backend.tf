@@ -1,12 +1,15 @@
 # =============================================================================
 # Terraform Backend Configuration
 # =============================================================================
-# Using local backend for simplicity.
-# For production, consider using remote backends like S3 or Azure Storage.
+# Using Azure Storage for remote state management.
+# This ensures state is persisted between GitHub Actions runs.
 # =============================================================================
 
 terraform {
-  backend "local" {
-    path = "terraform.tfstate"
+  backend "azurerm" {
+    resource_group_name  = "uit-go-tfstate-rg"
+    storage_account_name = "uitgotfstate"
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
   }
 }

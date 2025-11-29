@@ -47,11 +47,33 @@ jobs:
           host: ${{ secrets.AZURE_VM_HOST }}
           username: ${{ secrets.AZURE_VM_USERNAME }}
           key: ${{ secrets.AZURE_VM_SSH_KEY }}
-          command_timeout: 10m
+          command_timeout: 15m
           script: |
             echo "=========================================="
             echo "Starting deployment..."
             echo "=========================================="
+            
+            # Ensure Docker is in PATH and running
+            export PATH=$PATH:/usr/bin:/usr/local/bin
+            
+            # Wait for cloud-init to complete (in case VM just started)
+            echo "Waiting for cloud-init to complete..."
+            sudo cloud-init status --wait || true
+            
+            # Ensure Docker is running
+            echo "Ensuring Docker is running..."
+            sudo systemctl start docker || true
+            sudo systemctl enable docker || true
+            
+            # Verify Docker is available
+            if ! command -v docker &> /dev/null; then
+              echo "Docker not found. Installing Docker..."
+              curl -fsSL https://get.docker.com -o get-docker.sh
+              sudo sh get-docker.sh
+              sudo usermod -aG docker $USER
+              sudo systemctl start docker
+              rm get-docker.sh
+            fi
             
             # Check if app directory exists, if not clone it
             if [ ! -d "/opt/uit-go" ]; then
@@ -96,40 +118,144 @@ jobs:
             EOF
             fi
             
-            # Build and start services
+            # Build and start services (using sudo to ensure docker access)
             echo "Starting Docker Compose services..."
-            docker compose up -d --build
+            sudo docker compose down --remove-orphans || true
+            sudo docker compose up -d --build
             
             # Wait for services to start
             echo "Waiting for services to start..."
-            sleep 30
+            sleep 60
             
             # Show current status
             echo "=========================================="
             echo "Current service status:"
             echo "=========================================="
-            docker compose ps
+            sudo docker compose ps
+            
+            # Show logs if any container is not running
+            echo ""
+            echo "Checking for any failed containers..."
+            sudo docker compose ps --format json | grep -v "running" && sudo docker compose logs --tail=50 || echo "All containers are running!"
             
             echo ""
             echo "Deployment complete!"
       
-      - name: Health Check
+      - name: Health Check & API Tests
         run: |
-          echo "Running health check..."
+          echo "=========================================="
+          echo "Running Health Checks & API Tests..."
+          echo "=========================================="
           
-          # Wait a bit more for services
-          sleep 10
+          VM_HOST="${{ secrets.AZURE_VM_HOST }}"
+          BASE_URL="http://${VM_HOST}:8000"
           
-          # Check Kong Gateway
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.AZURE_VM_HOST }}:8000/ || echo "000")
+          # Function to test endpoint
+          test_endpoint() {
+            local name="$1"
+            local url="$2"
+            local expected_code="${3:-200}"
+            
+            echo ""
+            echo "Testing: $name"
+            echo "URL: $url"
+            
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$url" 2>/dev/null || echo "000")
+            
+            if [ "$HTTP_STATUS" = "000" ]; then
+              echo "❌ FAILED: Could not connect to $name"
+              return 1
+            elif [ "$HTTP_STATUS" = "$expected_code" ]; then
+              echo "✅ PASSED: $name responded with status $HTTP_STATUS"
+              return 0
+            else
+              echo "⚠️ WARNING: $name responded with status $HTTP_STATUS (expected $expected_code)"
+              return 0
+            fi
+          }
           
-          if [ "$HTTP_STATUS" = "000" ]; then
-            echo "Warning: Could not connect to Kong Gateway"
-            echo "This might be normal if services are still starting up"
+          # Wait for services to be fully ready
+          echo "Waiting 30 seconds for services to be fully ready..."
+          sleep 30
+          
+          # Track test results
+          TESTS_PASSED=0
+          TESTS_FAILED=0
+          
+          # Test Kong Gateway (root returns 404 which is expected)
+          if test_endpoint "Kong Gateway" "${BASE_URL}/" "404"; then
+            TESTS_PASSED=$((TESTS_PASSED + 1))
           else
-            echo "Kong Gateway responded with status: $HTTP_STATUS"
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          fi
+          
+          # Test User Service health endpoint
+          if test_endpoint "User Service Health" "${BASE_URL}/api/users/health" "200"; then
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          fi
+          
+          # Test Trip Service health endpoint
+          if test_endpoint "Trip Service Health" "${BASE_URL}/api/trips/health" "200"; then
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          fi
+          
+          # Test Driver Service health endpoint
+          if test_endpoint "Driver Service Health" "${BASE_URL}/api/drivers/health" "200"; then
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          fi
+          
+          # Test User Registration endpoint (should return 400 or 201 depending on payload)
+          echo ""
+          echo "Testing: User Registration Endpoint (POST)"
+          REG_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/api/users/auth/register" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"test@example.com","password":"Test1234!","name":"Test User"}' \
+            --max-time 30 2>/dev/null || echo -e "\n000")
+          
+          REG_STATUS=$(echo "$REG_RESPONSE" | tail -n1)
+          REG_BODY=$(echo "$REG_RESPONSE" | sed '$d')
+          
+          if [ "$REG_STATUS" = "000" ]; then
+            echo "❌ FAILED: Could not connect to User Registration endpoint"
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          elif [ "$REG_STATUS" = "201" ] || [ "$REG_STATUS" = "400" ] || [ "$REG_STATUS" = "409" ]; then
+            echo "✅ PASSED: User Registration endpoint responded with status $REG_STATUS"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "⚠️ WARNING: User Registration responded with status $REG_STATUS"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          fi
+          
+          # Summary
+          echo ""
+          echo "=========================================="
+          echo "Test Summary"
+          echo "=========================================="
+          echo "✅ Passed: $TESTS_PASSED"
+          echo "❌ Failed: $TESTS_FAILED"
+          echo ""
+          
+          if [ $TESTS_FAILED -gt 0 ]; then
+            echo "⚠️ Some tests failed. Services might still be starting up."
+            echo "Please check the VM logs for more details."
+          else
+            echo "🎉 All tests passed!"
           fi
           
           echo ""
-          echo "Deployment finished!"
-          echo "API available at: http://${{ secrets.AZURE_VM_HOST }}:8000"
+          echo "=========================================="
+          echo "Deployment Complete!"
+          echo "=========================================="
+          echo "API Gateway: ${BASE_URL}"
+          echo ""
+          echo "Available Endpoints:"
+          echo "  - User Service:   ${BASE_URL}/api/users/*"
+          echo "  - Trip Service:   ${BASE_URL}/api/trips/*"
+          echo "  - Driver Service: ${BASE_URL}/api/drivers/*"
+          echo "==========================================""

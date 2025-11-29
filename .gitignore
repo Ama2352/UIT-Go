@@ -6,9 +6,12 @@
 *.tfstate.*
 *.tfvars
 .terraform/
-.terraform.lock.hcl
 terraform.tfvars
 **/localstack-data/
+tfplan
+
+# Keep .terraform.lock.hcl (provider version lock file - should be committed)
+# !.terraform.lock.hcl
 
 node_modules/
 dist/
@@ -18,5 +21,3 @@ build/
 
 .DS_Store
 private.pem
-
-infrastructure/*
