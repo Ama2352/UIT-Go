@@ -43,6 +43,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: 🔑 Login to Container Registry
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -53,7 +54,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./services/user-service
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-user-service:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-user-service:${{ github.sha }}
@@ -76,6 +77,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: 🔑 Login to Container Registry
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -86,7 +88,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./services/trip_service
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-trip-service:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-trip-service:${{ github.sha }}
@@ -109,6 +111,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: 🔑 Login to Container Registry
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -119,7 +122,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./services/driver-service
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-driver-service:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-driver-service:${{ github.sha }}
@@ -128,37 +131,36 @@ jobs:
 
   # =========================================
   # Notification Service (NestJS + RabbitMQ)
-  # TEMPORARILY DISABLED - Uncomment when ready
   # =========================================
-  # notification-service:
-  #   name: 📢 Notification Service
-  #   runs-on: ubuntu-latest
-  #   
-  #   steps:
-  #     - name: 📥 Checkout code
-  #       uses: actions/checkout@v4
-  #     
-  #     - name: 🐳 Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
-  #     
-  #     - name: 🔑 Login to Container Registry
-  #       if: github.ref == 'refs/heads/main'
-  #       uses: docker/login-action@v3
-  #       with:
-  #         registry: ${{ env.REGISTRY }}
-  #         username: ${{ github.actor }}
-  #         password: ${{ secrets.GITHUB_TOKEN }}
-  #     
-  #     - name: 🏗️ Build Docker image
-  #       uses: docker/build-push-action@v5
-  #       with:
-  #         context: ./services/notification-service
-  #         push: ${{ github.ref == 'refs/heads/main' }}
-  #         tags: |
-  #           ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-notification-service:latest
-  #           ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-notification-service:${{ github.sha }}
-  #         cache-from: type=gha
-  #         cache-to: type=gha,mode=max
+  notification-service:
+    name: 📢 Notification Service
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 🔑 Login to Container Registry
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🏗️ Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/notification-service
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-notification-service:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-notification-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # =========================================
   # Summary Job - Reports overall status
@@ -166,7 +168,7 @@ jobs:
   ci-success:
     name: ✅ CI Success
     runs-on: ubuntu-latest
-    needs: [user-service, trip-service, driver-service]
+    needs: [user-service, trip-service, driver-service, notification-service]
     steps:
       - name: All services built successfully
         run: echo "🎉 All Docker images built successfully!"
