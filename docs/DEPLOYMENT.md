@@ -13,15 +13,17 @@ The deployment is **fully automated** using three GitHub Actions workflows:
 │                                                                          │
 │  1. CI Workflow (ci.yml)                                                 │
 │     ├── Triggered: On push/PR to main                                   │
-│     └── Builds Docker images for all services                           │
+│     ├── Builds Docker images for all services                           │
+│     └── Pushes to GHCR (main branch only)                               │
 │                                                                          │
 │  2. Terraform Workflow (terraform.yml)                                   │
-│     ├── Triggered: Manual or on infrastructure changes                  │
+│     ├── Triggered: Manual dispatch                                      │
+│     ├── Actions: plan, apply, destroy                                   │
 │     ├── Creates Azure VM with Docker pre-installed                      │
 │     └── Stores state in Azure Storage (auto-created)                    │
 │                                                                          │
 │  3. CD Workflow (cd.yml)                                                 │
-│     ├── Triggered: After Terraform completes or manual                  │
+│     ├── Triggered: Automatically after terraform apply OR manual        │
 │     ├── SSHs into Azure VM                                              │
 │     ├── Deploys services via docker-compose                             │
 │     └── Runs health checks on all endpoints                             │
@@ -113,28 +115,29 @@ http://<VM_PUBLIC_IP>:8000
 **Jobs:**
 | Job | Description |
 |-----|-------------|
-| `user-service` | Build & push User Service Docker image |
-| `trip-service` | Build & push Trip Service Docker image |
-| `driver-service` | Build & push Driver Service Docker image |
+| `user-service` | Build User Service Docker image |
+| `trip-service` | Build Trip Service Docker image |
+| `driver-service` | Build Driver Service Docker image |
+| `notification-service` | Build Notification Service Docker image |
 | `ci-success` | Summary job |
 
-**Docker Images:** Pushed to `ghcr.io/ama2352/uitgo-*`
+**Note:** Docker images are only pushed to `ghcr.io/ama2352/uitgo-*` on `main` branch. Feature branches only build (validate).
 
 ---
 
 ### Terraform Workflow (`terraform.yml`)
 
-**Triggers:** Manual dispatch, Push to `infrastructure/terraform/**`
+**Triggers:** Manual dispatch only (workflow_dispatch)
 
 **Actions:**
 | Action | Description |
 |--------|-------------|
-| `plan` | Preview infrastructure changes |
-| `apply` | Create/update Azure resources |
-| `destroy` | Delete all Azure resources |
+| `plan` | Preview infrastructure changes (default) |
+| `apply` | Create/update Azure resources, then auto-trigger CD |
+| `destroy` | Delete ALL Azure resources (VM + state storage) |
 
 **Resources Created:**
-- Resource Group: `uitgo-rg`
+- Resource Group: `uit-go-rg`
 - Virtual Network + Subnet
 - Network Security Group (ports: 22, 80, 443, 8000)
 - Public IP (static)
@@ -150,7 +153,9 @@ http://<VM_PUBLIC_IP>:8000
 
 ### CD Workflow (`cd.yml`)
 
-**Triggers:** After Terraform completes, Manual dispatch
+**Triggers:** 
+- Automatically after Terraform `apply` succeeds (called via `workflow_call`)
+- Manual dispatch
 
 **Steps:**
 1. Wait for VM to be ready (60s)
@@ -290,7 +295,9 @@ sudo docker compose restart
 
 Services may need more time to start. Wait 2-3 minutes and check manually:
 ```bash
-curl http://<VM_IP>:8000/api/users/health
+curl http://<VM_IP>:8000/users/ping
+curl http://<VM_IP>:8000/trips/ping
+curl http://<VM_IP>:8000/drivers/ping
 ```
 
 ---
