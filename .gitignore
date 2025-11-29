@@ -17,3 +17,6 @@ build/
 .vscode/
 
 .DS_Store
+private.pem
+
+infrastructure/*

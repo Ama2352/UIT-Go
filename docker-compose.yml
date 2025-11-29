@@ -30,8 +30,12 @@ services:
       NODE_ENV: development
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      JWT_PRIVATE_KEY_PATH: /app/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/public.pem
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+    volumes:
+      - ./services/user-service/private.pem:/app/private.pem:ro
+      - ./services/shared/public.pem:/app/public.pem:ro
     depends_on:
       user-postgres:
         condition: service_healthy
@@ -63,6 +67,8 @@ services:
     restart: unless-stopped
     depends_on:
       trip-postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: ${TRIPDB_URL}
@@ -96,9 +102,12 @@ services:
     environment:
       REDIS_HOST: driver-redis
       REDIS_PORT: 6379
+      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
     ports:
       - "8082:8082"
       - "5005:5005"
+    volumes:
+      - ./services/shared/public.pem:/app/keys/public.pem:ro
 
   # # =====================================
   # # NOTIFICATION SERVICE (NestJS + RabbitMQ)
@@ -120,20 +129,22 @@ services:
   #     timeout: 5s
   #     retries: 5
 
-  # notification-service:
-  #   build: ./services/notification-service
-  #   container_name: notification-service
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3001:3000"
-  #   environment:
-  #     NODE_ENV: development
-  #     PORT: 3000
-  #     RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
-  #     JWT_SECRET: ${JWT_SECRET}
-  #   depends_on:
-  #     rabbitmq:
-  #       condition: service_healthy
+  notification-service:
+    build: ./services/notification-service
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      JWT_PUBLIC_KEY_PATH: /app/public.pem
+    volumes:
+      - ./services/shared/public.pem:/app/public.pem:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
   # =====================================
   # KONG API GATEWAY (DB-less)
@@ -168,15 +179,6 @@ services:
       timeout: 5s
       retries: 5
 
-# =====================================
-# RabbitMQ SERVICE
-# =====================================  
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"     # RabbitMQ main port
-      - "15672:15672"   # RabbitMQ management UI
 
 # =====================================
 # LOCALSTACK SERVICE

@@ -8,6 +8,7 @@ export interface JwtPayload {
   sub: string;
   email: string;
   userType: string;
+  iss: string;
 }
 
 @Injectable()
@@ -31,6 +32,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       userType: user.userType,
+      iss: 'uit-go',  // Issuer claim for Kong JWT validation
     };
 
     const token = this.jwtService.sign(payload);

@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import { Logger, UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { readFileSync } from 'fs';
 import { WebSocketClient } from './interfaces/websocket-client.interface';
 
 @WebSocketGateway({
@@ -43,9 +44,14 @@ export class NotificationGateway
         return;
       }
 
-      const secret = this.configService.get<string>('JWT_SECRET');
+      const publicKeyPath = this.configService.get<string>('JWT_PUBLIC_KEY_PATH');
+      if (!publicKeyPath) {
+        throw new Error('JWT public key path must be configured');
+      }
+      const publicKey = readFileSync(publicKeyPath);
       const payload = await this.jwtService.verifyAsync(token, {
-        secret: secret,
+        publicKey,
+        algorithms: ['RS256'],
       });
 
       const userId = payload.sub;

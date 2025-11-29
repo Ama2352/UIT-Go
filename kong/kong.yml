@@ -1,4 +1,22 @@
 _format_version: "3.0"
+_transform: true
+
+# Define consumer with JWT credentials
+consumers:
+  - username: uit-go-app
+    jwt_secrets:
+      - key: uit-go
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuBtuUuoWlX4+nxzv17Xt
+          whQeUx79I0+H2TK6t0ENSTDrHsRMPkeBmJOrTr3oqxsrKtHVzI8R9IMqHUMU2ZUv
+          Yo238B+2JNVloqTCBIzvfYoibUngUFKr5yypt09eagqUF2jGqmh3lGPmh7gXGvkd
+          QcYrAljKxlXsfFz5giCTSsoSDRQgjk5+kfNVuyAiGcEbPu3Y7APbBHY6K8EvkW2m
+          EbKBT6HjOUbyTIC+BgPO934khpWWoHcEnGb+XAvNlGXbSdO8zSIgDUYsAFw9gWLl
+          pWhiJgkvhc6HWrvtCTAhSW9Oie9SK/Cdrzgqk6urns9f6TN63Zvnf/Qh1eLk5wIy
+          SQIDAQAB
+          -----END PUBLIC KEY-----
 
 services:
   - name: user-service
@@ -7,6 +25,7 @@ services:
       - name: user-route
         paths:
           - /users
+          - /sessions
         strip_path: false
 
   - name: trip-service
@@ -16,6 +35,11 @@ services:
         paths:
           - /trips
         strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
 
   - name: driver-service
     url: http://driver-service:8082
@@ -24,3 +48,8 @@ services:
         paths:
           - /drivers
         strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
