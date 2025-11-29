@@ -76,22 +76,33 @@ jobs:
               rm get-docker.sh
             fi
             
-            # Check if app directory exists, if not clone it
-            if [ ! -d "/opt/uit-go" ]; then
+            # Check if app directory exists and is a valid git repo
+            if [ -d "/opt/uit-go/.git" ]; then
+              echo "Repository already exists. Pulling latest code..."
+              cd /opt/uit-go
+              git fetch origin
+              git checkout ${{ github.ref_name }} || git checkout main
+              git pull
+            else
               echo "Cloning repository for the first time..."
+              # Remove directory if it exists but is not a git repo
+              sudo rm -rf /opt/uit-go
               sudo mkdir -p /opt/uit-go
               sudo chown $USER:$USER /opt/uit-go
               git clone https://github.com/${{ github.repository }}.git /opt/uit-go
+              cd /opt/uit-go
+              git checkout ${{ github.ref_name }} || git checkout main
             fi
             
-            # Navigate to app directory
-            cd /opt/uit-go
+            # Verify we're in the right directory with docker-compose.yml
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "❌ ERROR: docker-compose.yml not found in $(pwd)"
+              echo "Contents of current directory:"
+              ls -la
+              exit 1
+            fi
             
-            # Pull latest code
-            echo "Pulling latest code..."
-            git fetch origin
-            git checkout ${{ github.ref_name }} || git checkout main
-            git pull
+            echo "✅ Repository ready at $(pwd)"
             
             # Create .env file if it doesn't exist
             if [ ! -f ".env" ]; then
