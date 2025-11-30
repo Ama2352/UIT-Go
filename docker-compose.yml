@@ -1,7 +1,77 @@
+version: "3.8"
+
 services:
   # =====================================
-  # USER SERVICE (NestJS + Prisma)
+  # EXPORTERS
   # =====================================
+  
+  # 1. Redis Exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://driver-redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - uit-go-network
+    depends_on:
+      - driver-redis
+
+  # 2. RabbitMQ Exporter
+  rabbitmq-exporter:
+    image: kbudde/rabbitmq-exporter
+    container_name: rabbitmq-exporter
+    restart: unless-stopped
+    environment:
+      - RABBIT_URL=http://rabbitmq:15672
+      - RABBIT_USER=${RABBITMQ_USER}
+      - RABBIT_PASSWORD=${RABBITMQ_PASSWORD}
+    ports:
+      - "9419:9419" # Mở cổng ra host
+    networks:
+      - uit-go-network
+    depends_on:
+      - rabbitmq
+
+  # 3. Postgres User DB Exporter
+  postgres-exporter-user:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter-user
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: "user-postgres:5432/user_db?sslmode=disable"
+      DATA_SOURCE_USER: ${USERDB_USERNAME}
+      DATA_SOURCE_PASS: ${USERDB_PASSWORD}
+    ports:
+      - "9187:9187" # Mở cổng ra host
+    networks:
+      - uit-go-network
+    depends_on:
+      - user-postgres
+
+  # 4. Postgres Trip DB Exporter
+  postgres-exporter-trip:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter-trip
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: "trip-postgres:5432/trip_db?sslmode=disable"
+      DATA_SOURCE_USER: ${TRIPDB_USERNAME}
+      DATA_SOURCE_PASS: ${TRIPDB_PASSWORD}
+    ports:
+      - "9188:9187"
+    networks:
+      - uit-go-network
+    depends_on:
+      - trip-postgres
+
+  # =====================================
+  # APPLICATION SERVICES
+  # =====================================
+
+  # USER SERVICE STACK
   user-postgres:
     image: postgres:15-alpine
     container_name: user-postgres
@@ -44,9 +114,7 @@ services:
       user-postgres:
         condition: service_healthy
 
-  # =====================================
-  # TRIP SERVICE (Spring Boot)
-  # =====================================
+  # TRIP SERVICE STACK
   trip-postgres:
     image: postgres:15-alpine
     container_name: trip-postgres
@@ -90,9 +158,7 @@ services:
     ports:
       - "8081:8081"
 
-  # =====================================
-  # DRIVER SERVICE (Spring Boot + Redis)
-  # =====================================
+  # DRIVER SERVICE STACK
   driver-redis:
     image: redis:7-alpine
     container_name: driver-redis
@@ -125,9 +191,7 @@ services:
     volumes:
       - ./services/shared/public.pem:/app/keys/public.pem:ro
 
-  # =====================================
-  # NOTIFICATION SERVICE (NestJS + RabbitMQ)
-  # =====================================
+  # NOTIFICATION SERVICE STACK
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq
@@ -167,9 +231,7 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # =====================================
-  # KONG API GATEWAY (DB-less)
-  # =====================================
+  # KONG API GATEWAY
   kong:
     image: kong:3.6
     container_name: kong
@@ -185,8 +247,8 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_LOG_LEVEL: debug
     ports:
-      - "8000:8000" # Public requests (Gateway)
-      - "8003:8003" # Admin API
+      - "8000:8000"
+      - "8003:8003"
     volumes:
       - ./kong/kong.yml:/usr/local/kong/declarative/kong.yml
     depends_on:
@@ -202,24 +264,20 @@ services:
       timeout: 5s
       retries: 5
 
-
-# =====================================
-# LOCALSTACK SERVICE
-# ===================================== 
-
+  # LOCALSTACK
   localstack:
-      image: localstack/localstack:latest
-      networks:
-        - uit-go-network
-      ports:
-        - "4566:4566"
-        - "4571:4571"
-      environment:
-        - SERVICES=ec2,s3,iam,sts,lambda
-        - DEBUG=1
-      volumes:
-        - "./localstack-data:/var/lib/localstack"
-        - "/var/run/docker.sock:/var/run/docker.sock"
+    image: localstack/localstack:latest
+    networks:
+      - uit-go-network
+    ports:
+      - "4566:4566"
+      - "4571:4571"
+    environment:
+      - SERVICES=ec2,s3,iam,sts,lambda
+      - DEBUG=1
+    volumes:
+      - "./localstack-data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
 
 # =====================================
 # NETWORKS
@@ -235,4 +293,3 @@ volumes:
   user_postgres_data:
   trip_postgres_data:
   rabbitmq_data:
- 
