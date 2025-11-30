@@ -46,7 +46,7 @@ UIT-Go adopts a **domain-driven microservices model** — each service owns its 
 ## III. System Flow Overview  
 The following diagram shows the Event-Driven Architecture implemented in UIT-Go. 
 
-![Event-Driven Architecture](./assets/event-driven-architecture.png)
+![Event-Driven Architecture](../assets/UIT-Go%20Architecture.png)
 
 ---
 
