@@ -19,9 +19,20 @@
 3. [What We Built](#3-what-we-built)
 4. [Key Design Decisions](#4-key-design-decisions)
 5. [Module A: Scalability & Performance](#5-module-a-scalability--performance)
-6. [Challenges & Solutions](#6-challenges--solutions)
-7. [Results & Demo](#7-results--demo)
-8. [Conclusion](#8-conclusion)
+   - 5.1 [High-Level Architecture Overview](#51-high-level-architecture-overview)
+   - 5.2 [Detailed Architecture Design](#52-detailed-architecture-design)
+6. [Performance & Load Testing](#6-performance--load-testing)
+   - 6.1 [Overview](#61-overview)
+   - 6.2 [Test Environment](#62-test-environment)
+   - 6.3 [Metrics](#63-metrics)
+   - 6.4 [Test Scenarios](#64-test-scenarios)
+   - 6.5 [Results Summary](#65-results-summary)
+   - 6.6 [Findings](#66-findings)
+   - 6.7 [Conclusion](#67-conclusion)
+   - 6.8 [Tooling Architecture Diagram](#68-tooling-architecture-diagram)
+7. [Challenges & Solutions](#7-challenges--solutions)
+8. [Results & Demo](#8-results--demo)
+9. [Conclusion](#9-conclusion)
 
 ---
 
@@ -58,7 +69,7 @@ UIT-Go is a **ride-hailing backend system** built with microservices architectur
 
 ### 2.1 High-Level Architecture
 
-![UIT-Go Architecture](./assets/UIT-Go%20Architecture.png)
+![UIT-Go Architecture](../assets/UIT-Go%20Architecture.png)
 
 ### 2.2 Services Overview
 
@@ -192,7 +203,7 @@ Module A focuses on designing, validating, and implementing a highly scalable, e
 
 The design emphasizes loose coupling through messaging, stateless services for horizontal scaling, caching and geospatial indexing for driver matching, and strong consistency guarantees via idempotent logic and distributed locking.
 
-# 5.1 High-Level Architecture Overview
+### 5.1 High-Level Architecture Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -231,9 +242,9 @@ The design emphasizes loose coupling through messaging, stateless services for h
         └─ Logs, RabbitMQ UI, RedisInsight, Prometheus, Grafana, K6 integration
 ```
 
-# 5.2 Detailed Architecture Design
+### 5.2 Detailed Architecture Design
 
-## 5.2.1 Client & Access Layer
+#### 5.2.1 Client & Access Layer
 
 The Client & Access Layer provides the unified entry point for all external traffic.
 
@@ -246,7 +257,7 @@ The Client & Access Layer provides the unified entry point for all external traf
 ### Implementation  
 Kong API Gateway routes traffic to TripService, DriverService, and UserService.
 
-## 5.2.2 Stateless Services & Idempotency
+#### 5.2.2 Stateless Services & Idempotency
 
 All microservices are stateless.
 
@@ -267,7 +278,7 @@ All microservices are stateless.
 ### Idempotent Consumer  
 Ensures messages are processed once even if RabbitMQ retries.
 
-## 5.2.3 Messaging & Async Layer
+#### 5.2.3 Messaging & Async Layer
 
 RabbitMQ powers the event-driven communication pipeline.
 
@@ -281,15 +292,15 @@ RabbitMQ powers the event-driven communication pipeline.
 7. DriverService publishes `trip.assigned`  
 8. TripService updates trip state in PostgreSQL  
 
-## 5.2.4 Caching & Geolocation Layer
+#### 5.2.4 Caching & Geolocation Layer
 
-### Redis GEO  
+**Redis GEO**  
 Used for real-time driver lookup around a pickup location.
 
-### SETNX Lock  
+**SETNX Lock**  
 Guarantees exclusive assignment when multiple drivers attempt to accept the same trip concurrently.
 
-## 5.2.5 Data Storage Layer
+#### 5.2.5 Data Storage Layer
 
 PostgreSQL stores persistent business data using the database-per-service approach.
 
@@ -302,7 +313,7 @@ PostgreSQL stores persistent business data using the database-per-service approa
 
 Indexes are applied on frequently queried columns such as `status`, `driver_id`, and `created_at` in the `trips` table.
 
-## 5.2.6 Infrastructure & Scaling Layer
+#### 5.2.6 Infrastructure & Scaling Layer
 
 Docker Compose orchestrates all services.
 
@@ -312,19 +323,19 @@ Docker Compose orchestrates all services.
 - Internal Docker network between services  
 - Architecture prepared for horizontal scaling in future deployments  
 
-## 5.2.7 Observability & Control Layer
+#### 5.2.7 Observability & Control Layer
 
-### Tools  
+**Tools**  
 - Docker logs for each service  
 - RabbitMQ Management UI  
 - RedisInsight  
 - PostgreSQL CLI/GUI  
 
-### Prometheus Integration  
+**Prometheus Integration**  
 Prometheus scrapes metrics exposed by TripService and DriverService.  
 It collects latency, throughput, system metrics, JVM/NodeJS metrics, queue depth, and Redis performance indicators.
 
-### Grafana Integration  
+**Grafana Integration**  
 Grafana visualizes Prometheus metrics via dashboards showing:  
 - Trip creation latency  
 - Driver assignment latency  
@@ -333,16 +344,17 @@ Grafana visualizes Prometheus metrics via dashboards showing:
 - Database connection activity  
 - k6 load levels correlated with system metrics  
 
-### K6 Integration  
+**K6 Integration**  
 K6 exports metrics to Prometheus via remote-write.  
 This enables correlation between load generation and backend performance on Grafana dashboards.
 
 ---
 
-# 6. Performance & Load Testing  
-### Module A — Scalability Validation
+## 6. Performance & Load Testing
 
-## 6.1 Overview  
+*Module A — Scalability Validation*
+
+### 6.1 Overview  
 
 Performance and scalability validation is conducted with **k6**, with metrics exported to **Prometheus** and visualized through **Grafana**.  
 This allows direct correlation between injected load (virtual users), HTTP response behavior, and backend resource utilization (CPU, memory, Redis, RabbitMQ, PostgreSQL).
@@ -355,7 +367,7 @@ Five scenarios are defined to cover both typical and extreme usage patterns of U
 4. Spike Test with Real Driver Pool (200 drivers)  
 5. Ramp-Up Unlimited (0 → 3000 virtual users)
 
-## 6.2 Test Environment  
+### 6.2 Test Environment
 
 | Component | Configuration |
 |----------|---------------|
@@ -369,7 +381,7 @@ Five scenarios are defined to cover both typical and extreme usage patterns of U
 | Database | PostgreSQL (single instance) |
 | Driver pool | 50–200 driver IDs (depending on scenario) |
 
-## 6.3 Metrics  
+### 6.3 Metrics
 
 The following metrics are collected and analyzed:
 
@@ -383,13 +395,13 @@ The following metrics are collected and analyzed:
 - **Redis lock behavior** – SETNX success/failure patterns under concurrency  
 - **System metrics** – CPU, memory, and I/O usage from Prometheus during tests  
 
-## 6.4 Test Scenarios  
+### 6.4 Test Scenarios
 
 This section describes in detail the five k6-based scenarios used to validate Module A.
 
 ---
 
-### 6.4.1 Scenario 1 – Baseline Load Test (TripService Only)  
+#### 6.4.1 Scenario 1 – Baseline Load Test (TripService Only)  
 
 **Objective**  
 Establish a baseline for TripService performance under moderate load without any driver interaction or event-driven processing. This scenario isolates the HTTP layer, business logic, and PostgreSQL writes for trip creation.
@@ -419,7 +431,7 @@ stages: [
 
 ---
 
-### 6.4.2 Scenario 2 – Passenger–Driver End-to-End Workflow  
+#### 6.4.2 Scenario 2 – Passenger–Driver End-to-End Workflow  
 
 **Objective**  
 Validate the correctness and stability of the full Trip Assignment workflow, including:
@@ -475,7 +487,7 @@ stages: [
 
 ---
 
-### 6.4.3 Scenario 3 – Trip Spike Test  
+#### 6.4.3 Scenario 3 – Trip Spike Test  
 
 **Objective**  
 Evaluate how TripService behaves under a sudden surge of trip creation traffic, simulating a “peak hour” where many passengers request rides simultaneously.
@@ -507,7 +519,7 @@ stages: [
 
 ---
 
-### 6.4.4 Scenario 4 – Spike Test with Real Driver Pool (200 Drivers)  
+#### 6.4.4 Scenario 4 – Spike Test with Real Driver Pool (200 Drivers)  
 
 **Objective**  
 Simulate a realistic high-load situation where a large pool of real drivers (imported from the database) are active while passengers are concurrently creating trips and drivers are attempting to accept them.
@@ -547,7 +559,7 @@ Same as Scenario 2, but with a larger and more realistic driver pool.
 
 ---
 
-### 6.4.5 Scenario 5 – Ramp-Up Unlimited (0 → 3000 VUs)  
+#### 6.4.5 Scenario 5 – Ramp-Up Unlimited (0 → 3000 VUs)  
 
 **Objective**  
 Stress-test the system to identify its breaking point and understand how it behaves when approaching or exceeding capacity. This scenario is not about maintaining a strict SLO, but about discovering bottlenecks and failure modes.
@@ -577,13 +589,13 @@ Same as Scenario 4.
 
 ---
 
-# 6.5 Results Summary
+### 6.5 Results Summary
 
 This section provides a scenario-by-scenario analysis of performance, correctness, consistency, and stability under different load conditions. The results highlight the architectural strengths of Module A and reveal the natural contention points of a geospatial ride-matching system.
 
 ---
 
-## 6.5.1 Scenario 1 — Baseline Load Test (TripService Only)
+#### 6.5.1 Scenario 1 — Baseline Load Test (TripService Only)
 
 **Objective**  
 Measure TripService performance in isolation, without driver assignment, Redis, or RabbitMQ.
@@ -599,7 +611,7 @@ Trip creation is highly optimized and is **not a bottleneck**. PostgreSQL handle
 
 ---
 
-## 6.5.2 Scenario 2 — Passenger–Driver End-to-End Workflow
+#### 6.5.2 Scenario 2 — Passenger–Driver End-to-End Workflow
 
 **Objective**  
 Validate the full workflow across services:
@@ -621,7 +633,7 @@ The event-driven pipeline (RabbitMQ), Redis GEO, and Redis SETNX locking all beh
 
 ---
 
-## 6.5.3 Scenario 3 — Trip Spike Test (200 VUs)
+#### 6.5.3 Scenario 3 — Trip Spike Test (200 VUs)
 
 **Objective**  
 Evaluate how TripService behaves under a sudden, short-term spike in trip creation requests (peak-hour simulation).
@@ -637,7 +649,7 @@ TripService gracefully absorbs the spike, maintaining low latency and zero error
 
 ---
 
-## 6.5.4 Scenario 4 — Spike Test with Real Driver Pool (200 Drivers)
+#### 6.5.4 Scenario 4 — Spike Test with Real Driver Pool (200 Drivers)
 
 **Objective**  
 Simulate realistic concurrency with 200 real drivers:
@@ -660,7 +672,7 @@ The higher error rate is largely due to **expected contention on Redis SETNX loc
 
 ---
 
-## 6.5.5 Scenario 5 — Ramp-Up Unlimited (0 → 3000 VUs)
+#### 6.5.5 Scenario 5 — Ramp-Up Unlimited (0 → 3000 VUs)
 
 **Objective**  
 Identify the breaking point of the system and observe its behavior under extreme overload.
@@ -679,13 +691,13 @@ Beyond a certain threshold, the system exceeds its capacity, and latency grows s
 
 ---
 
-# 6.6 Findings
+### 6.6 Findings
 
 This section distills the empirical results into broader architectural insights.
 
 ---
 
-## 6.6.1 TripService is Not the Primary Bottleneck
+#### 6.6.1 TripService is Not the Primary Bottleneck
 
 Across all scenarios, TripService consistently maintains low latency and high success rates, even at high concurrency levels. Trip creation remains stable and reliable, with:
 
@@ -697,7 +709,7 @@ The trip creation path (API → business logic → PostgreSQL) is highly optimiz
 
 ---
 
-## 6.6.2 Driver Accept Path is the Natural Bottleneck
+#### 6.6.2 Driver Accept Path is the Natural Bottleneck
 
 The most constrained part of the system is the **driver accept** flow, which uses Redis SETNX to ensure that only one driver can successfully claim a trip. Under heavy contention:
 
@@ -710,7 +722,7 @@ The bottleneck is **logical and intentional**: the architecture prioritizes corr
 
 ---
 
-## 6.6.3 Graceful Degradation Instead of Catastrophic Failure
+#### 6.6.3 Graceful Degradation Instead of Catastrophic Failure
 
 Even in Scenario 5 with 3000 VUs:
 
@@ -724,7 +736,7 @@ The system degrades by increasing latency and rejecting conflicting operations r
 
 ---
 
-## 6.6.4 Redis Stability Under Heavy Lock Contention
+#### 6.6.4 Redis Stability Under Heavy Lock Contention
 
 Redis is heavily stressed in Scenarios 4 and 5 due to:
 
@@ -741,7 +753,7 @@ Redis is an appropriate choice for geospatial indexing and distributed locking a
 
 ---
 
-## 6.6.5 RabbitMQ Pipeline Robustness
+#### 6.6.5 RabbitMQ Pipeline Robustness
 
 RabbitMQ is responsible for transporting `trip.requested` and `trip.assigned` events between services. Across all scenarios:
 
@@ -754,7 +766,7 @@ The asynchronous, event-driven architecture is sound, and RabbitMQ can reliably 
 
 ---
 
-## 6.6.6 Stateless Microservices Enable Predictable Scaling
+#### 6.6.6 Stateless Microservices Enable Predictable Scaling
 
 TripService and DriverService are deliberately stateless, with all persistent state stored in PostgreSQL and Redis. The performance results show:
 
@@ -766,13 +778,13 @@ Horizontal scaling (e.g., adding more service instances behind an API Gateway or
 
 ---
 
-# 6.7 Conclusion
+### 6.7 Conclusion
 
 The performance evaluation of UIT-Go Module A demonstrates that the proposed architecture is:
 
 ---
 
-## 6.7.1 Scalable Under Realistic Load
+#### 6.7.1 Scalable Under Realistic Load
 
 For realistic usage scenarios (Scenarios 1–3 and moderate parts of Scenario 4), the system:
 
@@ -784,7 +796,7 @@ This indicates that Module A can comfortably support production-like traffic pat
 
 ---
 
-## 6.7.2 Resilient Under Extreme Stress
+#### 6.7.2 Resilient Under Extreme Stress
 
 In the extreme stress scenario (5) with up to 3000 virtual users:
 
@@ -796,7 +808,7 @@ The system’s behavior under overload is **predictable and controlled**, favori
 
 ---
 
-## 6.7.3 Correct by Design
+#### 6.7.3 Correct by Design
 
 Thanks to Redis SETNX locking and clear separation of responsibilities:
 
@@ -808,7 +820,7 @@ This confirms that consistency guarantees are upheld even under high contention.
 
 ---
 
-## 6.7.4 Predictable and Graceful Degradation
+#### 6.7.4 Predictable and Graceful Degradation
 
 As load increases beyond the capacity of the underlying hardware:
 
@@ -820,7 +832,7 @@ This pattern of degradation is aligned with best practices for distributed syste
 
 ---
 
-## 6.7.5 Production Readiness and Future Work
+#### 6.7.5 Production Readiness and Future Work
 
 Overall, Module A provides:
 
@@ -837,7 +849,7 @@ Future improvements can focus on:
 
 These enhancements would further increase the maximum sustainable throughput and reduce tail latency, but the current architecture already demonstrates production-grade robustness and correctness.
 
-## 6.8 Tooling Architecture Diagram
+### 6.8 Tooling Architecture Diagram
 
 ```
 ┌──────────────┐        Prometheus Remote Write        ┌────────────────┐
@@ -852,6 +864,8 @@ These enhancements would further increase the maximum sustainable throughput and
 │ Trip / Driver    │ <---------------------------- │  Visualization Layer       │
 └──────────────────┘        metrics export         └───────────────────────────┘
 ```
+
+---
 
 ## 7. Challenges & Solutions
 
