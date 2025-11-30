@@ -3,9 +3,9 @@
 ### Module A - Scalability & Performance
 
 **Team Members:**
-- Nguyen Thanh Kiet (22520720)
-- Huynh Chi Hen (23520455)
-- Ho Nguyen Minh Sang (23521338)
+- Nguyễn Thanh Kiệt (22520720)
+- Huỳnh Chí Hên (23520455)
+- Hồ Nguyễn Minh Sang (23521338)
 
 **Date:** November 2025  
 **Repository:** [https://github.com/Ama2352/UIT-Go](https://github.com/Ama2352/UIT-Go)
