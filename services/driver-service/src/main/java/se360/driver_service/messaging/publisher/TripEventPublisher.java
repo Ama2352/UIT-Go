@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import se360.driver_service.messaging.RabbitMQConfiguration;
 import se360.driver_service.messaging.events.TripAssignedEvent;
+import se360.driver_service.messaging.events.TripOfferedEvent;
 
 @Component
 @RequiredArgsConstructor
@@ -17,6 +18,13 @@ public class TripEventPublisher {
         rabbitTemplate.convertAndSend(
                 RabbitMQConfiguration.EXCHANGE,
                 RabbitMQConfiguration.ASSIGNED_ROUTING_KEY,
+                event
+        );
+    }
+    public void publishTripOffered(TripOfferedEvent event) {
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfiguration.EXCHANGE,
+                "trip.offered",     // routing key mới
                 event
         );
     }

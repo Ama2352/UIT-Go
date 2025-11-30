@@ -19,23 +19,26 @@ public class TripAssignedListener {
     private final TripRepository tripRepository;
 
     @RabbitListener(queues = RabbitMQConfiguration.ASSIGNED_QUEUE)
-    public void handleAssigned(TripAssignedEvent event) {
+    public void handleTripAssigned(TripAssignedEvent event) {
+        Optional<Trip> optionalTrip = tripRepository.findById(event.getTripId());
 
-        System.out.println("Received trip assigned event: " + event);
+        if (optionalTrip.isEmpty()) {
 
-        Optional<Trip> opt = tripRepository.findById(event.getTripId());
-        if (opt.isEmpty()) {
-            System.out.println("❌ Trip not found: " + event.getTripId());
             return;
         }
 
-        Trip trip = opt.get();
+        Trip trip = optionalTrip.get();
+
+
+        if (trip.getTripStatus() == TripStatus.ASSIGNED) {
+            return;
+        }
+
         trip.setDriverId(event.getDriverId());
         trip.setTripStatus(TripStatus.ASSIGNED);
         trip.setAcceptedAt(LocalDateTime.now());
         trip.setUpdatedAt(LocalDateTime.now());
 
         tripRepository.save(trip);
-        System.out.println("Trip updated");
     }
 }

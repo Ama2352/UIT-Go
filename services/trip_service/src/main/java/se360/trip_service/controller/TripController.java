@@ -14,7 +14,6 @@ import se360.trip_service.service.TripService;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -58,17 +57,7 @@ public class TripController {
         return ResponseEntity.ok(fare);
     }
 
-    @PutMapping("/{id}/accept")
-    public ResponseEntity<TripResponse> acceptTrip(
-            @PathVariable UUID id,
-            @RequestBody Map<String, UUID> body
-    ) {
-        UUID driverId = body.get("driverId");
 
-        return tripService.acceptTrip(id, driverId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
 
 
     @PostMapping("/{id}/start")

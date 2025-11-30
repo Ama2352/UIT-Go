@@ -19,6 +19,9 @@ public class RabbitMQConfiguration {
     public static final String ASSIGNED_QUEUE = "trip.assigned.queue";
     public static final String ASSIGNED_ROUTING_KEY = "trip.assigned";
 
+    public static final String OFFERED_QUEUE = "trip.offered.queue";
+    public static final String OFFERED_ROUTING = "trip.offered";
+
     @Bean
     public TopicExchange tripExchange() {
 
@@ -57,5 +60,16 @@ public class RabbitMQConfiguration {
     }
 
 
+    @Bean
+    public Queue tripOfferedQueue() {
+        return QueueBuilder.durable(OFFERED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding bindOffered() {
+        return BindingBuilder.bind(tripOfferedQueue())
+                .to(tripExchange())
+                .with(OFFERED_ROUTING);
+    }
 
 }

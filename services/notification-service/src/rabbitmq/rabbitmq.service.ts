@@ -38,7 +38,8 @@ export class RabbitMQService implements OnModuleInit {
                 'trip.assigned',
                 'trip.started',
                 'trip.completed',
-                'trip.cancelled'
+                'trip.cancelled',
+                'trip.offered'
             ];
 
             for (const key of routingKeys) {

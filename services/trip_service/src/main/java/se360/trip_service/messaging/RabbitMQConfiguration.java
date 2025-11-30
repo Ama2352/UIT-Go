@@ -15,30 +15,30 @@ import org.springframework.amqp.support.converter.MessageConverter;
 public class RabbitMQConfiguration {
 
     public static final String EXCHANGE = "trip.events";
+
     public static final String QUEUE = "trip.requested.queue";
     public static final String ROUTING_KEY = "trip.requested";
+
     public static final String ASSIGNED_QUEUE = "trip.assigned.queue";
     public static final String ASSIGNED_ROUTING = "trip.assigned";
 
-
-    @Bean
-    public Queue queue() {
-       return new Queue(QUEUE, true);
-    }
     @Bean
     public TopicExchange exchange() {
         return new TopicExchange(EXCHANGE, true, false);
     }
 
     @Bean
-    public Binding binding(Queue queue, TopicExchange exchange) {
-        return BindingBuilder.bind(queue).to(exchange).with(ROUTING_KEY);
+    public Queue requestedQueue() {
+        return new Queue(QUEUE, true);
     }
 
     @Bean
-    public MessageConverter messageConverter() {
-        return new Jackson2JsonMessageConverter();
+    public Binding bindingRequested(Queue requestedQueue, TopicExchange exchange) {
+        return BindingBuilder.bind(requestedQueue)
+                .to(exchange)
+                .with(ROUTING_KEY);
     }
+
 
     @Bean
     public Queue assignedQueue() {
@@ -46,48 +46,13 @@ public class RabbitMQConfiguration {
     }
 
     @Bean
-    public Binding assignedBinding(TopicExchange exchange) {
+    public Binding bindingAssigned(TopicExchange exchange) {
         return BindingBuilder.bind(assignedQueue())
                 .to(exchange)
                 .with(ASSIGNED_ROUTING);
     }
 
-    @Bean
-    public Queue tripStartedQueue() {
-        return new Queue("trip.started.queue", true);
-    }
-
-    @Bean
-    public Binding bindTripStartedQueue(Queue tripStartedQueue, TopicExchange exchange) {
-        return BindingBuilder.bind(tripStartedQueue)
-                .to(exchange)
-                .with("trip.started");
-    }
-
-    @Bean
-    public Queue tripCompletedQueue() {
-        return new Queue("trip.completed.queue", true);
-    }
-
-    @Bean
-    public Binding bindTripCompletedQueue(Queue tripCompletedQueue, TopicExchange exchange) {
-        return BindingBuilder.bind(tripCompletedQueue)
-                .to(exchange)
-                .with("trip.completed");
-    }
-
-    @Bean
-    public Queue tripCancelledQueue() {
-        return new Queue("trip.cancelled.queue", true);
-    }
-
-    @Bean
-    public Binding bindTripCancelledQueue(Queue tripCancelledQueue, TopicExchange exchange) {
-        return BindingBuilder.bind(tripCancelledQueue)
-                .to(exchange)
-                .with("trip.cancelled");
-    }
-
+    // ========== SHARED MESSAGE CONVERTER ==========
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();
@@ -102,6 +67,4 @@ public class RabbitMQConfiguration {
         factory.setMessageConverter(jsonMessageConverter());
         return factory;
     }
-
-
 }

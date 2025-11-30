@@ -44,6 +44,10 @@ export class EventConsumer implements OnModuleInit {
                         await this.notificationService.notifyTripCancelled(content);
                         break;
 
+                    case 'trip.offered':
+                        await this.notificationService.notifyTripOffered(content);
+                        break;
+
                     default:
                         this.logger.warn(`Unknown routing key: ${routingKey}`);
                 }

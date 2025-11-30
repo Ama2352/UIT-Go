@@ -107,7 +107,7 @@ public class TripService {
         return tripRepository.findById(id).map(trip -> {
 
             if (trip.getTripStatus() != TripStatus.SEARCHING &&
-                    trip.getTripStatus() != TripStatus.ACCEPTED) {
+                    trip.getTripStatus() != TripStatus.ASSIGNED) {
                 throw new IllegalStateException("Trip can only be cancelled before started.");
             }
 

@@ -15,8 +15,10 @@ import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -70,6 +72,23 @@ public class DriverService {
                 .filter(driverId -> "ONLINE".equals(redisTemplate.opsForHash().get(DRIVER_STATUS_KEY, driverId)))
                 .toList();
     }
+
+    public void cacheTripPassenger(UUID tripId, UUID passengerId) {
+        redisTemplate.opsForValue().set(
+                "trip:passenger:" + tripId.toString(),
+                passengerId.toString(),
+                Duration.ofMinutes(5) // TTL để trip không tồn tại mãi
+        );
+    }
+
+    public UUID getPassengerIdForTrip(UUID tripId) {
+        String value = redisTemplate.opsForValue()
+                .get("trip:passenger:" + tripId.toString());
+
+        return value != null ? UUID.fromString(value) : null;
+    }
+
+
 
     // === Called by WebSocket handler on every GPS tick ===
     public void handleStreamingLocation(DriverLocationMessage msg) {

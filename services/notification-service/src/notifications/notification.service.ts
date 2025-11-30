@@ -6,6 +6,7 @@ import { TripCancelledDto } from '../events/dto/trip-cancelled.dto';
 import { TripAssignedDto } from '../events/dto/trip-assigned.dto';
 import { PaymentSuccessDto } from '../events/dto/payment-success.dto';
 import { Notification } from './interfaces/notification.interface';
+import {TripOfferedDto} from "../events/dto/trip-offered.dto";
 
 @Injectable()
 export class NotificationService {
@@ -91,7 +92,22 @@ export class NotificationService {
     });
   }
 
-  async notifyPaymentSuccess(payload: PaymentSuccessDto) {
+    async notifyTripOffered(payload: TripOfferedDto) {
+        const message = `New trip request near you`;
+
+        // Notify driver
+        await this.sendNotification(payload.driverId, {
+            userId: payload.driverId,
+            type: 'TRIP_OFFERED',
+            title: 'New Trip Available',
+            message,
+            payload,
+            createdAt: new Date(),
+        });
+    }
+
+
+    async notifyPaymentSuccess(payload: PaymentSuccessDto) {
     const message = `Payment of ${payload.amount} ${payload.currency} was successful.`;
     
     // Notify passenger
