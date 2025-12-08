@@ -160,14 +160,14 @@ jobs:
             ["${{ secrets.LOCAL_SSH_PUBLIC_KEY }}"]
         run: |
 
-          # Validate GitHub Actions generated public key BEFORE plan
-          if [ ! -s $GITHUB_WORKSPACE/ssh-artifacts/id_rsa.pub ] && [ ! -s ../ssh-artifacts/id_rsa.pub ] && [ ! -s ssh-artifacts/id_rsa.pub ]; then
-            echo "ERROR: Public key empty or missing"
+          PUBKEY="$GITHUB_WORKSPACE/ssh-artifacts/id_rsa.pub"
+
+          # Validate public key
+          if [ ! -s "$PUBKEY" ]; then
+            echo "ERROR: Public key empty or missing at $PUBKEY"
+            ls -R $GITHUB_WORKSPACE
             exit 1
           fi
-
-          # Correct path
-          PUBKEY="ssh-artifacts/id_rsa.pub"
 
           echo "Using SSH public key:"
           cat $PUBKEY
@@ -273,23 +273,29 @@ jobs:
       - name: Update GitHub Secrets
         run: |
           echo "Updating GitHub secrets..."
-          
-          # 1. Validate Inputs
+
           VM_IP="${{ steps.out.outputs.vm_ip }}"
           VM_USER="${{ steps.out.outputs.vm_user }}"
-          
+
           if [ -z "$VM_IP" ]; then
-            echo " ERROR: VM_IP is empty. Terraform might not have created the VM."
+            echo " ERROR: VM_IP is empty. Terraform may have failed."
             exit 1
           fi
 
-          # 2. Set Secrets safely using stdin (avoids quoting issues)
+          # Validate SSH private key exists
+          KEY_PATH="$GITHUB_WORKSPACE/ssh-artifacts/id_rsa"
+          if [ ! -s "$KEY_PATH" ]; then
+            echo " ERROR: SSH private key missing at $KEY_PATH"
+            ls -R $GITHUB_WORKSPACE
+            exit 1
+          fi
+
           echo -n "$VM_IP" | gh secret set AZURE_VM_HOST
           echo -n "$VM_USER" | gh secret set AZURE_VM_USERNAME
-          
-          # 3. Set SSH Key from file (preserves newlines correctly)
-          gh secret set AZURE_VM_SSH_KEY < ssh-artifacts/id_rsa
-          
+
+          # Corrected path for SSH key
+          gh secret set AZURE_VM_SSH_KEY < "$KEY_PATH"
+
           echo " GitHub secrets updated"
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN_WITH_SECRET_WRITE }}
