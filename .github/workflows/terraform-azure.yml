@@ -339,12 +339,7 @@ jobs:
             echo "❌ ERROR: SSH private key not found"
             exit 1
           fi
-          # Use absolute path to avoid path resolution issues inside action container
-          SSH_KEY_PATH="${{ github.workspace }}/ssh-key/id_rsa"
-          chmod 600 "$SSH_KEY_PATH"
-          ls -l "$SSH_KEY_PATH"
-          echo "SSH_KEY_PATH=$SSH_KEY_PATH" >> $GITHUB_ENV
-          echo "✅ SSH key verified and permissions set"
+          echo "✅ SSH key found"
 
       - name: Wait for VM cloud-init
         run: |
@@ -353,10 +348,12 @@ jobs:
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          SSH_KEY: ${{ secrets.AZURE_VM_SSH_KEY }}
         with:
           host: ${{ needs.apply.outputs.vm_ip }}
           username: ${{ needs.apply.outputs.vm_user }}
-          key_path: ${{ env.SSH_KEY_PATH }}
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
           command_timeout: 15m
           script: |
             echo "=========================================="
