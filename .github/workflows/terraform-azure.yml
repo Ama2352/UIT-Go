@@ -263,9 +263,23 @@ jobs:
       - name: Update GitHub Secrets
         run: |
           echo "Updating GitHub secrets..."
-          gh secret set AZURE_VM_HOST -b"${{ steps.out.outputs.vm_ip }}"
-          gh secret set AZURE_VM_USERNAME -b"${{ steps.out.outputs.vm_username }}"
-          gh secret set AZURE_VM_SSH_KEY -b"$(cat ssh-artifacts/id_rsa)"
+          
+          # 1. Validate Inputs
+          VM_IP="${{ steps.out.outputs.vm_ip }}"
+          VM_USER="${{ steps.out.outputs.vm_username }}"
+          
+          if [ -z "$VM_IP" ]; then
+            echo "❌ ERROR: VM_IP is empty. Terraform might not have created the VM."
+            exit 1
+          fi
+
+          # 2. Set Secrets safely using stdin (avoids quoting issues)
+          echo -n "$VM_IP" | gh secret set AZURE_VM_HOST
+          echo -n "$VM_USER" | gh secret set AZURE_VM_USERNAME
+          
+          # 3. Set SSH Key from file (preserves newlines correctly)
+          gh secret set AZURE_VM_SSH_KEY < ssh-artifacts/id_rsa
+          
           echo "✅ GitHub secrets updated"
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN_WITH_SECRET_WRITE }}
