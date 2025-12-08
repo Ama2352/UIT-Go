@@ -336,7 +336,6 @@ jobs:
           path: ssh-key
 
       - name: Verify SSH Key Downloaded
-        id: ssh_key
         run: |
           echo "Checking SSH key artifact..."
           ls -la ssh-key/ || true
@@ -344,10 +343,11 @@ jobs:
             echo "❌ ERROR: SSH private key not found"
             exit 1
           fi
-          # Base64 encode to safely pass multiline content
-          SSH_KEY_B64=$(base64 -w 0 ssh-key/id_rsa)
-          echo "ssh_key_b64=$SSH_KEY_B64" >> $GITHUB_OUTPUT
-          echo "✅ SSH key loaded"
+          # Copy to a location with proper permissions for the action
+          mkdir -p ~/.ssh
+          cp ssh-key/id_rsa ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "✅ SSH key ready at ~/.ssh/deploy_key"
 
       - name: Wait for VM cloud-init
         run: |
@@ -359,9 +359,9 @@ jobs:
         with:
           host: ${{ needs.apply.outputs.vm_ip }}
           username: ${{ needs.apply.outputs.vm_user }}
-          key: ${{ steps.ssh_key.outputs.ssh_key_b64 }}
-          key_format: base64
+          key_path: /home/runner/.ssh/deploy_key
           command_timeout: 15m
+          debug: true
           script: |
             echo "=========================================="
             echo "Starting UIT-Go deployment..."
