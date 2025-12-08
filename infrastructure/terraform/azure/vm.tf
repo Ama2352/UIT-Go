@@ -3,6 +3,12 @@
 # =============================================================================
 
 locals {
+  # Filter out empty strings from additional SSH keys
+  valid_additional_ssh_keys = [
+    for key in var.additional_ssh_keys : key
+    if trimspace(key) != ""
+  ]
+
   cloud_init_script = <<-EOF
     #cloud-config
     package_update: true
@@ -59,8 +65,9 @@ resource "azurerm_linux_virtual_machine" "main" {
   }
 
   # Additional SSH keys (local developer keys, etc.)
+  # Only adds non-empty keys
   dynamic "admin_ssh_key" {
-    for_each = var.additional_ssh_keys
+    for_each = local.valid_additional_ssh_keys
     content {
       username   = var.admin_username
       public_key = admin_ssh_key.value
