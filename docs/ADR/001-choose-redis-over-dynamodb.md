@@ -1,86 +1,234 @@
-# ADR 001: Chọn Redis thay vì DynamoDB cho lưu trữ dữ liệu định vị tài xế
+# ADR 001: Choosing Redis over DynamoDB for Geospatial Driver Tracking
 
-## 🎯 Bối cảnh
+## Status
 
-DriverService là microservice quan trọng trong hệ thống UIT-Go, chịu trách nhiệm quản lý trạng thái và vị trí tài xế theo thời gian thực. Các yêu cầu chính gồm:
-
-- Cập nhật vị trí tài xế liên tục (5-10 giây/lần)
-- Tìm kiếm tài xế trong bán kính nhất định từ hành khách
-- Đảm bảo độ trễ thấp để trải nghiệm mượt mà
-- Xử lý hàng nghìn tài xế đồng thời vào giờ cao điểm
-
-Hai hướng tiếp cận được cân nhắc:
-
-1. **Redis (ElastiCache)** – Ưu tiên tốc độ, real-time
-2. **DynamoDB với Geohashing** – Ưu tiên khả năng mở rộng và chi phí
+**Accepted** — November 2025
 
 ---
 
-## 🤔 Quyết định
+## Context
 
-**Nhóm quyết định sử dụng Redis (AWS ElastiCache) với tính năng Geospatial cho DriverService.**
+UIT-Go requires real-time tracking of driver locations for:
 
----
+1. **Nearby driver search**: Find available drivers within X km of passenger
+2. **ETA calculation**: Estimate arrival time based on driver position
+3. **Live tracking**: Show driver movement during trip
 
-## 💡 Lý do
+### Requirements
 
-### 1. Hiệu năng & độ trễ cực thấp
+| Requirement | Priority | Specification |
+|-------------|----------|---------------|
+| Geospatial queries | Critical | Radius search within 5km |
+| Query latency | Critical | < 50ms for search |
+| Update frequency | High | Every 5 seconds per driver |
+| Data freshness | High | < 10 seconds staleness |
+| Scalability | Medium | 10,000 concurrent drivers |
 
-Redis cung cấp độ trễ sub-millisecond, phù hợp cho:
+### Options Evaluated
 
-- Cập nhật vị trí real-time của tài xế
-- Tìm kiếm tài xế gần hành khách (<100ms)
-- Tracking vị trí trên bản đồ cho hành khách
-
-**So sánh:**
-
-| Công nghệ | Độ trễ read/write                 |
-| --------- | --------------------------------- |
-| Redis     | <1ms                              |
-| DynamoDB  | 5-10ms (có thể cao hơn khi write) |
-
----
-
-### 2. Hỗ trợ Geospatial tích hợp sẵn
-
-Redis cung cấp các lệnh GEO:
-
-- **GEOADD**: thêm vị trí
-- **GEORADIUS / GEODIST**: tìm kiếm & sắp xếp theo khoảng cách
-
-Trong khi đó, DynamoDB cần triển khai thư viện/geohash và nhiều logic phức tạp hơn.
+1. **Redis GEO**: In-memory, native geospatial commands
+2. **DynamoDB with Geo Library**: AWS managed, partition-based
+3. **PostgreSQL PostGIS**: Extension for spatial data
 
 ---
 
-### 3. Thích hợp cho môi trường local và MVP
+## Decision
 
-- Redis chạy nhanh bằng Docker, hỗ trợ offline và CI
-- DynamoDB yêu cầu AWS setup hoặc giả lập, phức tạp hơn
-
----
-
-### 4. Chi phí & time-to-market
-
-- Redis (self-hosted hoặc ElastiCache nhỏ) rẻ và triển khai nhanh
-- Giảm độ phức tạp hạ tầng, team tập trung vào business logic
+We chose **Redis 7** with **GEO commands** for real-time driver location storage.
 
 ---
 
-### ⚖️ Trade-offs
+## Rationale
 
-- **Persistence:** Redis là in-memory, cần bật RDB/AOF nếu muốn giảm rủi ro mất dữ liệu. Tuy nhiên, vị trí tài xế là dữ liệu tạm thời.
-- **Mở rộng:** DynamoDB scale tốt hơn; nếu số lượng tài xế tăng lên hàng chục nghìn, có thể dùng hybrid: Redis cho hot data, DynamoDB cho historical data.
+### 1. Native Geospatial Commands
+
+Redis provides built-in commands optimized for our use case:
+
+```bash
+# Store driver location
+GEOADD driver:locations 106.6297 10.8231 "driver-123"
+
+# Find drivers within 5km
+GEORADIUS driver:locations 106.6297 10.8231 5 km WITHDIST WITHCOORD
+
+# Get distance to driver
+GEODIST driver:locations "driver-123" "passenger-location" km
+```
+
+### 2. Sub-Millisecond Latency
+
+In-memory operations deliver consistent performance:
+
+| Operation | Redis | DynamoDB | PostgreSQL |
+|-----------|-------|----------|------------|
+| Single lookup | < 1ms | 5-10ms | 2-5ms |
+| Radius search | 1-5ms | 20-50ms | 10-20ms |
+| Update | < 1ms | 5-10ms | 2-5ms |
+
+### 3. Multi-Purpose Data Structures
+
+Redis serves multiple purposes in the Driver Service:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Redis 7 (Driver Service)                    │
+├──────────────────┬──────────────────┬───────────────────────────┤
+│   GEO Data       │   Hash Data      │      Key-Value            │
+│ driver:locations │ driver:status    │ trip:passenger:{id}       │
+│ (lat/lng)        │ driver:meta:{id} │ (with 5min TTL)           │
+└──────────────────┴──────────────────┴───────────────────────────┘
+```
+
+### 4. Driver Status Management
+
+Drivers are tracked with a status hash and explicit cleanup on offline:
+
+```java
+// Set driver online (no TTL - explicit status)
+redisTemplate.opsForHash().put(DRIVER_STATUS_KEY, driverId, "ONLINE");
+
+// Set driver offline and remove from GEO index
+redisTemplate.opsForHash().put(DRIVER_STATUS_KEY, driverId, "OFFLINE");
+geoOps.remove(DRIVER_LOCATION_KEY, driverId);
+```
 
 ---
 
-## ✅ Kết luận
+## Implementation
 
-Redis với Geospatial là lựa chọn tối ưu cho DriverService ở **Giai đoạn 1** vì:
+### Driver Service (Actual Code)
 
-- ✅ Đáp ứng real-time tracking
-- ✅ API đơn giản, dễ implement
-- ✅ Chi phí hợp lý cho MVP
-- ✅ Giảm time-to-market
-- ✅ Team tập trung vào business logic
+```java
+@Service
+@RequiredArgsConstructor
+public class DriverService {
+    
+    private static final String DRIVER_LOCATION_KEY = "driver:locations";
+    private static final String DRIVER_STATUS_KEY = "driver:status";
+    private static final String DRIVER_META_PREFIX = "driver:meta:";
+    
+    private final StringRedisTemplate redisTemplate;
+    private GeoOperations<String, String> geoOps;
+    
+    public void updateDriverLocation(String driverId, double lat, double lng) {
+        geoOps.add(DRIVER_LOCATION_KEY, new Point(lng, lat), driverId);
+    }
+    
+    public List<String> findNearbyDrivers(double lat, double lng, double radiusKm) {
+        Circle area = new Circle(
+            new Point(lng, lat), 
+            new Distance(radiusKm, Metrics.KILOMETERS)
+        );
+        GeoResults<RedisGeoCommands.GeoLocation<String>> results = 
+            geoOps.radius(DRIVER_LOCATION_KEY, area);
+        
+        if (results == null) return List.of();
+        
+        return results.getContent().stream()
+            .map(res -> res.getContent().getName())
+            .filter(driverId -> "ONLINE".equals(
+                redisTemplate.opsForHash().get(DRIVER_STATUS_KEY, driverId)))
+            .toList();
+    }
+    
+    public void setDriverOnline(String driverId) {
+        redisTemplate.opsForHash().put(DRIVER_STATUS_KEY, driverId, "ONLINE");
+    }
+    
+    public void setDriverOffline(String driverId) {
+        redisTemplate.opsForHash().put(DRIVER_STATUS_KEY, driverId, "OFFLINE");
+        geoOps.remove(DRIVER_LOCATION_KEY, driverId);
+    }
+}
+```
 
-**Tương lai:** Khi hệ thống phát triển và có dữ liệu usage thực tế, nhóm sẽ đánh giá lại và cân nhắc hybrid hoặc migrate sang DynamoDB nếu cần.
+### Docker Compose Configuration
+
+```yaml
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+```
+
+---
+
+## Trade-offs Accepted
+
+| Trade-off | Impact | Mitigation |
+|-----------|--------|------------|
+| **Volatile storage** | Data loss on restart | AOF persistence + periodic backup |
+| **Memory cost** | ~100 bytes per driver | Acceptable for 10k drivers (~1MB) |
+| **No complex queries** | Limited to radius/box search | Sufficient for driver matching |
+| **Single node limit** | ~1M operations/sec | Cluster mode if needed |
+
+---
+
+## Alternatives Considered
+
+### DynamoDB with Geo Library
+
+**Pros**:
+- Fully managed by AWS
+- Automatic scaling
+- Built-in replication
+
+**Cons**:
+- Higher latency (5-10ms minimum)
+- Complex Geo library setup
+- Per-request pricing adds up
+- Cannot run locally without LocalStack
+
+### PostgreSQL with PostGIS
+
+**Pros**:
+- Already using PostgreSQL
+- Powerful spatial queries
+- ACID compliance
+
+**Cons**:
+- Higher latency for simple lookups
+- Additional extension management
+- Overkill for ephemeral location data
+
+---
+
+## Consequences
+
+### Positive
+
+- Sub-10ms response time for driver search
+- Simple API with native GEO commands
+- Reusable for session management and caching
+- Lower operational complexity (single Redis instance)
+
+### Negative
+
+- Additional infrastructure component
+- Requires proper persistence configuration
+- Memory-bound scaling
+
+---
+
+## Future Considerations
+
+1. **Redis Cluster**: For horizontal scaling beyond 10k drivers
+2. **Redis Streams**: For location history and analytics
+3. **Hybrid Approach**: Hot data in Redis, cold data in PostgreSQL
+
+---
+
+## References
+
+- [Redis GEO Commands](https://redis.io/commands/?group=geo)
+- [Spring Data Redis](https://spring.io/projects/spring-data-redis)
+- [Redis Persistence](https://redis.io/docs/management/persistence/)
