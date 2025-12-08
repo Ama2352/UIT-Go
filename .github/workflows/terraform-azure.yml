@@ -159,11 +159,24 @@ jobs:
           TF_VAR_additional_ssh_keys: |
             ["${{ secrets.LOCAL_SSH_PUBLIC_KEY }}"]
         run: |
+
+          # Validate GitHub Actions generated public key BEFORE plan
+          if [ ! -s $GITHUB_WORKSPACE/ssh-artifacts/id_rsa.pub ] && [ ! -s ../ssh-artifacts/id_rsa.pub ] && [ ! -s ssh-artifacts/id_rsa.pub ]; then
+            echo "ERROR: Public key empty or missing"
+            exit 1
+          fi
+
+          # Correct path
+          PUBKEY="ssh-artifacts/id_rsa.pub"
+
+          echo "Using SSH public key:"
+          cat $PUBKEY
+
           terraform plan \
-            -var="ssh_public_key=$(cat $GITHUB_WORKSPACE/ssh-artifacts/id_rsa.pub)" \
+            -var="ssh_public_key=$(cat $PUBKEY)" \
             -out=tfplan \
             -detailed-exitcode || EXIT=$?
-
+        
           if [ "$EXIT" = "0" ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo " Plan complete - no changes"
