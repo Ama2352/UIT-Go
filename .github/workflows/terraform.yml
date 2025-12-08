@@ -199,9 +199,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-bundle
+          path: .
 
       - name: Verify Plan Exists
         run: |
+          echo "Checking for tfplan file..."
+          ls -la ${{ env.TF_WORKING_DIR }}/ || true
           if [ ! -f ${{ env.TF_WORKING_DIR }}/tfplan ]; then
             echo "❌ ERROR: No tfplan file found."
             echo "Plan must run before apply in the same workflow."
