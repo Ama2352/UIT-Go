@@ -310,6 +310,18 @@ jobs:
           name: ssh-key-for-deploy
           path: ssh-key
 
+      - name: Verify SSH Key Downloaded
+        run: |
+          echo "Checking SSH key artifact..."
+          ls -la ssh-key/
+          if [ ! -f ssh-key/id_rsa ]; then
+            echo "❌ ERROR: SSH private key not found"
+            exit 1
+          fi
+          # Set correct permissions
+          chmod 600 ssh-key/id_rsa
+          echo "✅ SSH key verified and permissions set"
+
       - name: Wait for VM cloud-init
         run: |
           echo "Waiting 60 seconds for VM to finish cloud-init..."
@@ -320,7 +332,7 @@ jobs:
         with:
           host: ${{ needs.apply.outputs.vm_ip }}
           username: ${{ needs.apply.outputs.vm_user }}
-          key_path: ssh-key/id_rsa
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
           command_timeout: 15m
           script: |
             echo "=========================================="
