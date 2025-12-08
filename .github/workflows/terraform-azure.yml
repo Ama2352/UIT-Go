@@ -336,6 +336,7 @@ jobs:
           path: ssh-key
 
       - name: Verify SSH Key Downloaded
+        id: load_key
         run: |
           echo "Checking SSH key artifact..."
           ls -la ssh-key/ || true
@@ -343,23 +344,52 @@ jobs:
             echo "❌ ERROR: SSH private key not found"
             exit 1
           fi
-          # Copy to a location with proper permissions for the action
-          mkdir -p ~/.ssh
-          cp ssh-key/id_rsa ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          echo "✅ SSH key ready at ~/.ssh/deploy_key"
+          
+          # Read the key content and set as output using heredoc delimiter
+          {
+            echo 'ssh_key<<EOFKEY'
+            cat ssh-key/id_rsa
+            echo 'EOFKEY'
+          } >> "$GITHUB_OUTPUT"
+          
+          echo "✅ SSH key loaded into output"
 
       - name: Wait for VM cloud-init
         run: |
           echo "Waiting 60 seconds for VM to finish cloud-init..."
           sleep 60
 
+      - name: Test SSH Connection
+        run: |
+          echo "Testing SSH connection with key..."
+          
+          # Save key to temp file for testing
+          mkdir -p ~/.ssh
+          cat ssh-key/id_rsa > ~/.ssh/test_key
+          chmod 600 ~/.ssh/test_key
+          
+          echo "VM IP: ${{ needs.apply.outputs.vm_ip }}"
+          echo "VM User: ${{ needs.apply.outputs.vm_user }}"
+          
+          # Test basic SSH connection
+          ssh -vvv -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -i ~/.ssh/test_key \
+            ${{ needs.apply.outputs.vm_user }}@${{ needs.apply.outputs.vm_ip }} \
+            "echo 'SSH connection successful'" || {
+              echo "❌ SSH connection failed"
+              echo "Checking if VM is reachable..."
+              ping -c 3 ${{ needs.apply.outputs.vm_ip }} || true
+              exit 1
+            }
+          
+          echo "✅ SSH connection verified"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ needs.apply.outputs.vm_ip }}
           username: ${{ needs.apply.outputs.vm_user }}
-          key_path: /home/runner/.ssh/deploy_key
+          key: ${{ steps.load_key.outputs.ssh_key }}
           command_timeout: 15m
           debug: true
           script: |
