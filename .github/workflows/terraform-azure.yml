@@ -26,7 +26,7 @@ on:
         options: [apply, destroy]
 
 env:
-  TF_WORKING_DIR: infrastructure/terraform
+  TF_WORKING_DIR: infrastructure/terraform/azure
   TF_STATE_RG: uit-go-tfstate-rg
   TF_STATE_STORAGE: uitgotfstate
   TF_STATE_CONTAINER: tfstate
@@ -162,7 +162,6 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform plan \
-            -var="cloud_provider=azure" \
             -var="ssh_public_key=$(cat $GITHUB_WORKSPACE/ssh-artifacts/id_rsa.pub)" \
             -out=tfplan \
             -detailed-exitcode || EXIT=$?
@@ -595,7 +594,6 @@ jobs:
         run: |
           echo "Destroying Terraform-managed infrastructure..."
           terraform destroy -auto-approve \
-            -var="cloud_provider=azure" \
             -var="ssh_public_key=dummy-key-not-used-for-destroy" \
             || true
           echo "✅ Infrastructure destroyed"
