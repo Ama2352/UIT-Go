@@ -14,6 +14,7 @@ services:
       POSTGRES_DB: ${USERDB_DATABASE}
       POSTGRES_REPLICATION_USER: ${USERDB_REPLICATION_USER}
       POSTGRES_REPLICATION_PASSWORD: ${USERDB_REPLICATION_PASSWORD}
+      USERDB_REPLICA_URL: postgresql://${USERDB_REPLICATION_USER}:${USERDB_REPLICATION_PASSWORD}@user-replica:5432/postgres
     ports:
       - "5433:5432"
     volumes:
@@ -60,7 +61,9 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: postgresql://${USERDB_USERNAME}:${USERDB_PASSWORD}@user-postgres:5432/postgres
+      USERDB_REPLICA_URL: postgresql://${USERDB_USERNAME}:${USERDB_PASSWORD}@user-replica:5432/postgres
+      USER_REPLICA_STRICT: ${USER_REPLICA_STRICT:-true}
       JWT_PRIVATE_KEY_PATH: /app/private.pem
       JWT_PUBLIC_KEY_PATH: /app/public.pem
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}

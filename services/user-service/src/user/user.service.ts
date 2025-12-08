@@ -1,20 +1,37 @@
 import { Injectable, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, PrismaReplicaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
 import { randomInt } from 'crypto';
 
 @Injectable()
 export class UserService {
   constructor(
     private prisma: PrismaService,
+    private prismaReplica: PrismaReplicaService,
     private authService: AuthService,
   ) {}
+
+  private readonly replicaStrict = process.env.USER_REPLICA_STRICT === 'true';
+
+  private async findUserReplicaFirst(where: Prisma.UserWhereUniqueInput) {
+    if (this.replicaStrict) {
+      // Strict mode: require replica to work (used for validating replication)
+      return this.prismaReplica.user.findUnique({ where });
+    }
+    try {
+      const user = await this.prismaReplica.user.findUnique({ where });
+      if (user) return user;
+    } catch (err) {
+      // Replica may be unavailable or missing schema; fall back to primary.
+    }
+    return this.prisma.user.findUnique({ where });
+  }
 
   async register(createUserDto: CreateUserDto): Promise<Omit<User, 'password'>> {
     const existingUser = await this.prisma.user.findUnique({
@@ -52,9 +69,7 @@ export class UserService {
   }
 
   async login(loginDto: LoginDto, ipAddress?: string): Promise<{ access_token: string }> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: loginDto.email },
-    });
+    const user = await this.findUserReplicaFirst({ email: loginDto.email });
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -88,9 +103,7 @@ export class UserService {
   }
 
   async getProfile(userId: string): Promise<Omit<User, 'password'>> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await this.findUserReplicaFirst({ id: userId });
 
     if (!user) {
       throw new NotFoundException('User not found');
@@ -124,9 +137,7 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<Omit<User, 'password'>> {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-    });
+    const user = await this.findUserReplicaFirst({ id });
 
     if (!user) {
       throw new NotFoundException('User not found');
