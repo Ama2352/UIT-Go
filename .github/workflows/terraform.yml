@@ -1,48 +1,50 @@
+# =============================================================================
+# Terraform Workflow for UIT-Go Application
+# =============================================================================
+# Key improvements:
+# - Deterministic plan → apply using artifacts
+# - Stable SSH key (generated once per plan)
+# - Clean destroy path
+# - CD integrated in same workflow (no workflow_run issues)
+# - No "plan" action that runs separately
+# =============================================================================
+
 name: Infrastructure - Terraform
 
 on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'Terraform action to perform'
-        required: true
-        default: 'plan'
+        description: "Terraform action to run"
         type: choice
-        options:
-          - plan
-          - apply
-          - destroy
-
-  push:
-    branches:
-      - main
-      - feature/terraform-azure-cicd
-      - fix/azure-deploy
-    paths:
-      - 'infrastructure/terraform/**'
-      - '.github/workflows/terraform.yml'
+        default: apply
+        options: [apply, destroy]
 
 env:
   TF_WORKING_DIR: infrastructure/terraform
-  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  # Backend configuration
   TF_STATE_RG: uit-go-tfstate-rg
   TF_STATE_STORAGE: uitgotfstate
   TF_STATE_CONTAINER: tfstate
 
-jobs:
+  # Azure credentials provided by GitHub Secrets
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
-  # ============================================
-  # Initialize Backend Storage (Auto-creates if needed)
-  # ============================================
+
+# =============================================================================
+# Backend Initialization
+# IMPORTANT:
+#   - Runs BEFORE plan/apply
+#   - Ensures remote state backend exists (storage account + container)
+#   - NEVER runs on destroy to avoid dependency issues
+# =============================================================================
+jobs:
   init-backend:
-    name: Initialize Terraform Backend
+    name: Prepare Remote Backend
     runs-on: ubuntu-latest
-    # Skip for destroy (we're deleting the backend anyway)
-    if: ${{ !(github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy') }}
+    if: ${{ github.event.inputs.action == 'apply' }}
 
     steps:
       - name: Azure Login
@@ -50,98 +52,63 @@ jobs:
         with:
           creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
-      - name: Ensure Backend Storage Exists
+      - name: Ensure Storage Backend Exists
         uses: azure/cli@v2
         with:
           azcliversion: latest
           inlineScript: |
-            set -e  # Exit on any error
-            
-            LOCATION="southeastasia"
-            RG_NAME="${{ env.TF_STATE_RG }}"
-            STORAGE_NAME="${{ env.TF_STATE_STORAGE }}"
-            CONTAINER_NAME="${{ env.TF_STATE_CONTAINER }}"
-            
-            # Function to cleanup on failure
-            cleanup_on_failure() {
-              echo "❌ Error occurred. Rolling back..."
-              echo "Deleting resource group $RG_NAME (if exists)..."
-              az group delete --name "$RG_NAME" --yes --no-wait 2>/dev/null || true
-              echo "Rollback initiated. Resource group deletion is in progress."
-              exit 1
-            }
-            
-            # Check if storage account already exists and is accessible
-            if az storage account show --name "$STORAGE_NAME" --resource-group "$RG_NAME" &>/dev/null; then
-              echo "✅ Backend storage already exists. Verifying container..."
-              
-              # Verify container exists
-              if az storage container show --name "$CONTAINER_NAME" --account-name "$STORAGE_NAME" --auth-mode login &>/dev/null; then
-                echo "✅ Container exists. Backend is ready."
-              else
-                echo "Creating missing container..."
-                az storage container create \
-                  --name "$CONTAINER_NAME" \
-                  --account-name "$STORAGE_NAME" \
-                  --auth-mode login || cleanup_on_failure
-                echo "✅ Container created."
-              fi
-            else
-              echo "📦 Creating backend storage..."
-              
-              # Trap errors for rollback
-              trap cleanup_on_failure ERR
-              
-              # Create resource group (idempotent - won't fail if exists)
-              echo "Creating resource group..."
-              az group create \
-                --name "$RG_NAME" \
-                --location "$LOCATION"
-              
-              # Create storage account
-              echo "Creating storage account..."
-              az storage account create \
-                --name "$STORAGE_NAME" \
-                --resource-group "$RG_NAME" \
-                --location "$LOCATION" \
-                --sku Standard_LRS \
-                --encryption-services blob \
-                --allow-blob-public-access false
-              
-              # Wait for storage account to be ready
-              echo "Waiting for storage account to be ready..."
-              sleep 10
-              
-              # Create blob container
-              echo "Creating blob container..."
-              az storage container create \
-                --name "$CONTAINER_NAME" \
-                --account-name "$STORAGE_NAME" \
-                --auth-mode login
-              
-              # Disable trap after success
-              trap - ERR
-              
-              echo "✅ Backend storage created successfully!"
-            fi
-            
-            echo ""
-            echo "Backend Configuration:"
-            echo "  Resource Group: $RG_NAME"
-            echo "  Storage Account: $STORAGE_NAME"
-            echo "  Container: $CONTAINER_NAME"
-            echo "  Location: $LOCATION"
+            set -e
+            RG=${{ env.TF_STATE_RG }}
+            STORAGE=${{ env.TF_STATE_STORAGE }}
+            CONTAINER=${{ env.TF_STATE_CONTAINER }}
+            LOCATION=southeastasia
 
-  # ============================================
-  # Terraform Plan
-  # ============================================
+            echo "Checking backend infrastructure..."
+            
+            # Create storage RG if needed
+            if ! az group show --name $RG &>/dev/null; then
+              echo "Creating resource group: $RG"
+              az group create --name $RG --location $LOCATION
+            else
+              echo "✅ Resource group exists: $RG"
+            fi
+
+            # Create storage account if needed
+            if ! az storage account show --name $STORAGE --resource-group $RG &>/dev/null; then
+              echo "Creating storage account: $STORAGE"
+              az storage account create \
+                --name $STORAGE \
+                --resource-group $RG \
+                --location $LOCATION \
+                --sku Standard_LRS
+              sleep 10
+            else
+              echo "✅ Storage account exists: $STORAGE"
+            fi
+
+            # Create container if missing
+            az storage container create \
+              --name $CONTAINER \
+              --account-name $STORAGE \
+              --auth-mode login || true
+            
+            echo "✅ Backend infrastructure ready"
+
+
+# =============================================================================
+# Terraform PLAN
+# - Generates deterministic SSH key
+# - Runs terraform plan → tfplan
+# - Uploads tfplan + SSH keys as artifacts for apply job
+# =============================================================================
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
     needs: init-backend
+    if: ${{ github.event.inputs.action == 'apply' }}
 
     outputs:
-      has_changes: ${{ steps.plan.outputs.has_changes }}
+      has_changes: ${{ steps.check.outputs.has_changes }}
 
     steps:
       - name: Checkout code
@@ -153,12 +120,18 @@ jobs:
           terraform_version: 1.6.0
           terraform_wrapper: false
 
-      - name: Create SSH Key for VM
+      # Generate SSH key ONCE during plan stage
+      # IMPORTANT: This key becomes a TERRAFORM INPUT → part of the plan
+      - name: Generate SSH Key (one-time)
         run: |
-          mkdir -p ~/.ssh
-          if [ ! -f ~/.ssh/id_rsa ]; then
-            ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "github-actions@uitgo"
-          fi
+          mkdir -p ssh-artifacts
+          ssh-keygen -t rsa -b 4096 -f ssh-artifacts/id_rsa -N "" -C "github-actions@uitgo"
+          echo "✅ SSH key generated"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -174,139 +147,73 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        id: plan
+        id: check
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform plan \
             -var="cloud_provider=azure" \
-            -var="enable_vm=true" \
-            -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            -var="azure_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
-            -var="azure_client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
-            -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -var="ssh_public_key=$(cat $GITHUB_WORKSPACE/ssh-artifacts/id_rsa.pub)" \
             -out=tfplan \
-            -detailed-exitcode || exit_code=$?
+            -detailed-exitcode || EXIT=$?
 
-          if [ "$exit_code" == "2" ]; then
+          # Mark if changes exist (exit code 2 = changes detected)
+          if [ "$EXIT" = "2" ]; then 
             echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "✅ Plan complete - changes detected"
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ Plan complete - no changes"
           fi
 
-      - name: Upload Plan
+      - name: Upload Plan + SSH Keys
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan
-          path: ${{ env.TF_WORKING_DIR }}/tfplan
+          name: tfplan-bundle
+          path: |
+            ${{ env.TF_WORKING_DIR }}/tfplan
+            ssh-artifacts/id_rsa
+            ssh-artifacts/id_rsa.pub
+          retention-days: 1
 
 
+# =============================================================================
+# Terraform APPLY
+# - Downloads EXACT plan + ssh key used during plan
+# - Runs: terraform apply tfplan
+# - Updates GitHub secrets for CD pipeline
+# =============================================================================
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: plan
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' }}
+    if: ${{ github.event.inputs.action == 'apply' }}
+    outputs:
+      vm_ip: ${{ steps.out.outputs.vm_ip }}
+      vm_user: ${{ steps.out.outputs.vm_user }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.6.0
-          terraform_wrapper: false
-
-      - name: Create SSH Key for VM
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "github-actions@uitgo"
-          echo "SSH_PUBLIC_KEY<<EOF" >> $GITHUB_ENV
-          cat ~/.ssh/id_rsa.pub >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          echo "SSH_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
-          cat ~/.ssh/id_rsa >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=${{ env.TF_STATE_RG }}" \
-            -backend-config="storage_account_name=${{ env.TF_STATE_STORAGE }}" \
-            -backend-config="container_name=${{ env.TF_STATE_CONTAINER }}" \
-            -backend-config="key=terraform.tfstate"
-
-      - name: Download Plan
+      - name: Download Plan Bundle
         uses: actions/download-artifact@v4
         with:
-          name: tfplan
-          path: ${{ env.TF_WORKING_DIR }}
+          name: tfplan-bundle
 
-      - name: Terraform Apply
-        working-directory: ${{ env.TF_WORKING_DIR }}
+      - name: Verify Plan Exists
         run: |
-          terraform apply \
-            -var="cloud_provider=azure" \
-            -var="enable_vm=true" \
-            -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            -var="azure_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
-            -var="azure_client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
-            -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
-            -auto-approve
-
-      - name: Extract VM Outputs
-        id: outputs
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          echo "vm_ip=$(terraform output -raw vm_public_ip)" >> $GITHUB_OUTPUT
-          echo "vm_username=azureuser" >> $GITHUB_OUTPUT
-
-      - name: Update GitHub Secrets
-        run: |
-          gh secret set AZURE_VM_HOST -b"${{ steps.outputs.outputs.vm_ip }}"
-          gh secret set AZURE_VM_USERNAME -b"azureuser"
-          gh secret set AZURE_VM_SSH_KEY -b"${{ env.SSH_PRIVATE_KEY }}"
-          echo "GitHub secrets updated."
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN_WITH_SECRET_WRITE }}
-
-      - name: Show Deployment Info
-        run: |
-          echo "VM Public IP: ${{ steps.outputs.outputs.vm_ip }}"
-          echo "SSH Command: ssh azureuser@${{ steps.outputs.outputs.vm_ip }}"
-
-  # ============================================
-  # Deploy Application (runs after successful apply)
-  # ============================================
-  deploy:
-    name: Deploy Application
-    needs: apply
-    uses: ./.github/workflows/cd.yml
-    secrets: inherit
-
-
-  # ============================================
-  # Terraform Destroy (All Resources)
-  # ============================================
-  destroy:
-    name: Destroy All Resources
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy' }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+          if [ ! -f ${{ env.TF_WORKING_DIR }}/tfplan ]; then
+            echo "❌ ERROR: No tfplan file found."
+            echo "Plan must run before apply in the same workflow."
+            exit 1
+          fi
+          echo "✅ tfplan found"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.0
           terraform_wrapper: false
-
-      - name: Create SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "github-actions@uitgo"
 
       - name: Azure Login
         uses: azure/login@v2
@@ -320,54 +227,374 @@ jobs:
             -backend-config="resource_group_name=${{ env.TF_STATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TF_STATE_STORAGE }}" \
             -backend-config="container_name=${{ env.TF_STATE_CONTAINER }}" \
-            -backend-config="key=terraform.tfstate" || true
+            -backend-config="key=terraform.tfstate"
 
+      # APPLY EXACT PLAN → deterministic infrastructure
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "Applying infrastructure changes..."
+          terraform apply -auto-approve tfplan
+          echo "✅ Infrastructure applied successfully"
+
+      - name: Extract Outputs
+        id: out
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "vm_ip=$(terraform output -raw vm_public_ip)" >> $GITHUB_OUTPUT
+          echo "vm_username=azureuser" >> $GITHUB_OUTPUT
+          echo "✅ VM outputs extracted"
+
+      - name: Update GitHub Secrets
+        run: |
+          echo "Updating GitHub secrets..."
+          gh secret set AZURE_VM_HOST -b"${{ steps.out.outputs.vm_ip }}"
+          gh secret set AZURE_VM_USERNAME -b"${{ steps.out.outputs.vm_username }}"
+          gh secret set AZURE_VM_SSH_KEY -b"$(cat ssh-artifacts/id_rsa)"
+          echo "✅ GitHub secrets updated"
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN_WITH_SECRET_WRITE }}
+
+      - name: Upload SSH Key for Deploy
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssh-key-for-deploy
+          path: ssh-artifacts/id_rsa
+          retention-days: 1
+
+
+# =============================================================================
+# Deploy Application (runs immediately after apply in same workflow)
+# =============================================================================
+  deploy:
+    name: Deploy Application
+    needs: apply
+    if: ${{ github.event.inputs.action == 'apply' && needs.apply.result == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download SSH Key
+        uses: actions/download-artifact@v4
+        with:
+          name: ssh-key-for-deploy
+          path: ssh-key
+
+      - name: Wait for VM cloud-init
+        run: |
+          echo "Waiting 60 seconds for VM to finish cloud-init..."
+          sleep 60
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ needs.apply.outputs.vm_ip }}
+          username: ${{ needs.apply.outputs.vm_user }}
+          key_path: ssh-key/id_rsa
+          command_timeout: 15m
+          script: |
+            echo "=========================================="
+            echo "Starting UIT-Go deployment..."
+            echo "=========================================="
+            
+            # Ensure Docker is in PATH and running
+            export PATH=$PATH:/usr/bin:/usr/local/bin
+            
+            # Wait for cloud-init to complete
+            echo "Waiting for cloud-init to complete..."
+            sudo cloud-init status --wait || true
+            
+            # Ensure Docker is running
+            echo "Ensuring Docker is running..."
+            sudo systemctl start docker || true
+            sudo systemctl enable docker || true
+            
+            # Install Docker if missing
+            if ! command -v docker &> /dev/null; then
+              echo "Docker not found. Installing Docker..."
+              curl -fsSL https://get.docker.com -o get-docker.sh
+              sudo sh get-docker.sh
+              sudo usermod -aG docker $USER
+              sudo systemctl start docker
+              rm get-docker.sh
+            fi
+            
+            # Force fresh clone to ensure correct structure
+            echo "Removing old deployment directory..."
+            sudo rm -rf /opt/uit-go
+            
+            echo "Cloning repository fresh..."
+            sudo mkdir -p /opt/uit-go
+            sudo chown $USER:$USER /opt/uit-go
+            git clone https://github.com/${{ github.repository }}.git /opt/uit-go
+            cd /opt/uit-go
+            git checkout ${{ github.ref_name }} || git checkout main
+            
+            # Verify docker-compose.yml exists
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "❌ ERROR: docker-compose.yml not found in $(pwd)"
+              ls -la
+              exit 1
+            fi
+            
+            echo "✅ Repository ready at $(pwd)"
+            
+            # Create .env file if it doesn't exist
+            if [ ! -f ".env" ]; then
+              echo "Creating .env file..."
+              cat > .env << 'EOF'
+            # Database - User Service
+            USERDB_USERNAME=postgres
+            USERDB_PASSWORD=postgres
+            USERDB_DATABASE=userdb
+            DATABASE_URL=postgresql://postgres:postgres@user-postgres:5432/userdb
+            
+            # Database - Trip Service
+            TRIPDB_USERNAME=postgres
+            TRIPDB_PASSWORD=postgres
+            TRIPDB_DATABASE=tripdb
+            TRIPDB_URL=jdbc:postgresql://trip-postgres:5432/tripdb
+            
+            # JWT
+            JWT_SECRET=your-super-secret-jwt-key-change-in-production
+            JWT_EXPIRES_IN=7d
+            
+            # RabbitMQ
+            RABBITMQ_USER=guest
+            RABBITMQ_PASSWORD=guest
+            EOF
+              echo "✅ .env file created"
+            fi
+            
+            # Generate JWT RSA key pair if they don't exist
+            echo "Checking JWT key files..."
+            
+            # Clean up if .pem files accidentally became directories
+            [ -d "services/user-service/private.pem" ] && rm -rf services/user-service/private.pem
+            [ -d "services/shared/public.pem" ] && rm -rf services/shared/public.pem
+            
+            # Ensure parent directories exist
+            mkdir -p services/user-service
+            mkdir -p services/shared
+            
+            if [ ! -f "services/user-service/private.pem" ]; then
+              echo "Generating RSA private key for JWT..."
+              openssl genrsa -out services/user-service/private.pem 2048
+            fi
+            
+            if [ ! -f "services/shared/public.pem" ]; then
+              echo "Generating RSA public key for JWT..."
+              openssl rsa -in services/user-service/private.pem -pubout -out services/shared/public.pem
+            fi
+            
+            # Verify keys exist and are files
+            if [ -f "services/user-service/private.pem" ] && [ -f "services/shared/public.pem" ]; then
+              echo "✅ JWT key files are ready"
+            else
+              echo "❌ ERROR: Failed to create JWT key files"
+              exit 1
+            fi
+            
+            # Build and start services
+            echo "Starting Docker Compose services..."
+            sudo docker compose down --remove-orphans || true
+            sudo docker compose up -d --build
+            
+            # Wait for services to start
+            echo "Waiting for services to start..."
+            sleep 60
+            
+            # Show current status
+            echo "=========================================="
+            echo "Current service status:"
+            echo "=========================================="
+            sudo docker compose ps
+            
+            # Show logs for debugging
+            echo ""
+            echo "=========================================="
+            echo "Service Logs (last 30 lines each):"
+            echo "=========================================="
+            for service in user-service trip-service driver-service kong; do
+              echo ""
+              echo "--- $service logs ---"
+              sudo docker compose logs --tail=30 $service 2>/dev/null || echo "No logs for $service"
+            done
+            
+            echo ""
+            echo "✅ Deployment complete!"
+
+      - name: Health Check & API Tests
+        run: |
+          echo "=========================================="
+          echo "Running Health Checks & API Tests..."
+          echo "=========================================="
+          
+          VM_HOST="${{ needs.apply.outputs.vm_ip }}"
+          BASE_URL="http://${VM_HOST}:8000"
+          
+          # Function to test endpoint
+          test_endpoint() {
+            local name="$1"
+            local url="$2"
+            local expected_code="${3:-200}"
+            
+            echo ""
+            echo "Testing: $name"
+            echo "URL: $url"
+            
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$url" 2>/dev/null || echo "000")
+            
+            if [ "$HTTP_STATUS" = "000" ]; then
+              echo "❌ FAILED: Could not connect to $name"
+              return 1
+            elif [ "$HTTP_STATUS" = "$expected_code" ]; then
+              echo "✅ PASSED: $name responded with status $HTTP_STATUS"
+              return 0
+            else
+              echo "⚠️ WARNING: $name responded with status $HTTP_STATUS (expected $expected_code)"
+              return 0
+            fi
+          }
+          
+          # Wait for services to be fully ready
+          echo "Waiting 30 seconds for services to be fully ready..."
+          sleep 30
+          
+          # Track test results
+          TESTS_PASSED=0
+          TESTS_FAILED=0
+          
+          # Test Kong Gateway (root returns 404 which is expected)
+          if test_endpoint "Kong Gateway" "${BASE_URL}/" "404"; then
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          fi
+          
+          # Test User Service ping endpoint
+          if test_endpoint "User Service Ping" "${BASE_URL}/users/ping" "200"; then
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          fi
+          
+          # Test Trip Service ping endpoint
+          if test_endpoint "Trip Service Ping" "${BASE_URL}/trips/ping" "200"; then
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          fi
+          
+          # Test Driver Service ping endpoint
+          if test_endpoint "Driver Service Ping" "${BASE_URL}/drivers/ping" "200"; then
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+          fi
+          
+          # Summary
+          echo ""
+          echo "=========================================="
+          echo "Test Summary"
+          echo "=========================================="
+          echo "Passed: $TESTS_PASSED"
+          echo "Failed: $TESTS_FAILED"
+          echo ""
+          
+          if [ $TESTS_FAILED -gt 0 ]; then
+            echo "⚠️ WARNING: Some tests failed. Services might still be starting up."
+            echo "Please check the VM logs for more details."
+          else
+            echo "✅ All health checks passed!"
+          fi
+          
+          echo ""
+          echo "=========================================="
+          echo "Deployment Complete!"
+          echo "=========================================="
+          echo "API Gateway: ${BASE_URL}"
+          echo ""
+          echo "Available Endpoints:"
+          echo "  - User Service:   ${BASE_URL}/users/*"
+          echo "  - Trip Service:   ${BASE_URL}/trips/*"
+          echo "  - Driver Service: ${BASE_URL}/drivers/*"
+          echo "=========================================="
+
+
+# =============================================================================
+# Terraform DESTROY
+# - No plan used (terraform destroy does not require plan)
+# - No SSH regen
+# - No backend recreation
+# - Clean removal of infrastructure and backend
+# =============================================================================
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.action == 'destroy' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+          terraform_wrapper: false
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ env.TF_STATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TF_STATE_STORAGE }}" \
+            -backend-config="container_name=${{ env.TF_STATE_CONTAINER }}" \
+            -backend-config="key=terraform.tfstate"
+
+      # Pass dummy ssh_public_key to satisfy required variable (not used during destroy)
       - name: Terraform Destroy Infrastructure
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
-          echo "Step 1: Destroying Terraform-managed infrastructure..."
-          terraform destroy \
+          echo "Destroying Terraform-managed infrastructure..."
+          terraform destroy -auto-approve \
             -var="cloud_provider=azure" \
-            -var="enable_vm=true" \
-            -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            -var="azure_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
-            -var="azure_client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
-            -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
-            -auto-approve || true
+            -var="ssh_public_key=dummy-key-not-used-for-destroy" \
+            || true
+          echo "✅ Infrastructure destroyed"
 
       - name: Destroy Backend Storage
         uses: azure/cli@v2
         with:
           azcliversion: latest
           inlineScript: |
-            echo ""
-            echo "Step 2: Destroying backend storage..."
-            echo "=========================================="
+            echo "Cleaning up backend storage..."
             
-            RG_NAME="${{ env.TF_STATE_RG }}"
-            INFRA_RG="uit-go-rg"
+            # Delete infrastructure resource group
+            echo "Deleting infrastructure resource group..."
+            az group delete --name uit-go-rg --yes --no-wait || true
             
-            # Delete infrastructure resource group if exists
-            if az group show --name "$INFRA_RG" &>/dev/null; then
-              echo "Deleting infrastructure resource group: $INFRA_RG"
-              az group delete --name "$INFRA_RG" --yes --no-wait
-              echo "✅ Infrastructure resource group deletion initiated"
-            fi
+            # Delete backend resource group
+            echo "Deleting backend resource group..."
+            az group delete --name ${{ env.TF_STATE_RG }} --yes --no-wait || true
             
-            # Delete backend storage resource group if exists
-            if az group show --name "$RG_NAME" &>/dev/null; then
-              echo "Deleting backend storage resource group: $RG_NAME"
-              az group delete --name "$RG_NAME" --yes --no-wait
-              echo "✅ Backend storage resource group deletion initiated"
-            else
-              echo "Resource group $RG_NAME does not exist. Nothing to delete."
-            fi
+            echo "✅ Resource groups marked for deletion"
 
       - name: Clear GitHub Secrets
         run: |
           echo "Clearing deployment secrets..."
           gh secret delete AZURE_VM_HOST || true
+          gh secret delete AZURE_VM_USERNAME || true
           gh secret delete AZURE_VM_SSH_KEY || true
+          echo "✅ Secrets cleared"
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN_WITH_SECRET_WRITE }}
 
@@ -375,12 +602,11 @@ jobs:
         run: |
           echo ""
           echo "=========================================="
-          echo "COMPLETE CLEANUP FINISHED"
+          echo "Terraform Destroy Complete!"
           echo "=========================================="
-          echo "Destroyed resources:"
-          echo "  - VM and infrastructure (uit-go-rg)"
-          echo "  - State storage (${{ env.TF_STATE_RG }})"
-          echo "  - GitHub Secrets (AZURE_VM_HOST, AZURE_VM_SSH_KEY)"
+          echo "All infrastructure and backend resources"
+          echo "have been destroyed or marked for deletion."
           echo ""
-          echo "To redeploy, run 'apply' action"
+          echo "Note: Azure may take a few minutes to fully"
+          echo "remove all resources in the background."
           echo "=========================================="
