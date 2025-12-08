@@ -8,9 +8,6 @@ terraform {
     }
   }
 
-  # Backend configuration is passed via CLI in CI/CD
-  # terraform init -backend-config="key=terraform.tfstate" ...
-  backend "azurerm" {}
 }
 
 provider "azurerm" {
