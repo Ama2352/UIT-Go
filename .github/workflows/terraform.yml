@@ -199,7 +199,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-bundle
-          path: .
 
       - name: Verify Plan Exists
         run: |
