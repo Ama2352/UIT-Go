@@ -1,29 +1,28 @@
 # =============================================================================
-# CI Workflow - Build Docker Images for All Services
+# CI Pipeline - Build & Test All Services
 # =============================================================================
-# Runs on: Push to main/feature branches, Pull Requests to main
-# What it does:
-#   1. Builds Docker images for each service (same as docker-compose build)
-#   2. Pushes images to GitHub Container Registry (on main branch only)
-#
-# NOTE: This CI uses Docker to build services, matching how docker-compose runs.
-#       The Dockerfiles handle all build steps (Maven, npm, etc.) internally.
+# Clean Architecture Pattern (from MovieBooking reference)
+# - Parallel Docker builds for all microservices
+# - Push to registry only on main branch
+# - No auto-push on feature branches (manual testing first)
 # =============================================================================
 
-name: CI - Build and Test
+name: CI Pipeline
 
 on:
   push:
-    branches: 
-      - main
-      - feature/terraform-azure-cicd
-      - fix/azure-deploy
+    branches: [ "**" ]  # All branches
   pull_request:
-    branches: [main]
+    branches: [ main ]
+  workflow_dispatch:
+
+# Minimal permissions for CI
+permissions:
+  contents: read
+  packages: write
 
 env:
   REGISTRY: ghcr.io
-  # Use lowercase for Docker image names (required by container registries)
   IMAGE_PREFIX: ama2352/uitgo
 
 jobs:
@@ -165,10 +164,30 @@ jobs:
   # =========================================
   # Summary Job - Reports overall status
   # =========================================
-  ci-success:
-    name: ✅ CI Success
+  ci-summary:
+    name: ✅ CI Summary
     runs-on: ubuntu-latest
     needs: [user-service, trip-service, driver-service, notification-service]
+    if: always()
+    
     steps:
-      - name: All services built successfully
-        run: echo "🎉 All Docker images built successfully!"
+      - name: Check CI Status
+        run: |
+          echo "=========================================="
+          echo "CI Pipeline Summary"
+          echo "=========================================="
+          echo "User Service: ${{ needs.user-service.result }}"
+          echo "Trip Service: ${{ needs.trip-service.result }}"
+          echo "Driver Service: ${{ needs.driver-service.result }}"
+          echo "Notification Service: ${{ needs.notification-service.result }}"
+          echo "=========================================="
+          
+          if [ "${{ needs.user-service.result }}" != "success" ] || \
+             [ "${{ needs.trip-service.result }}" != "success" ] || \
+             [ "${{ needs.driver-service.result }}" != "success" ] || \
+             [ "${{ needs.notification-service.result }}" != "success" ]; then
+            echo "❌ Some services failed to build"
+            exit 1
+          fi
+          
+          echo "✅ All services built successfully!"
