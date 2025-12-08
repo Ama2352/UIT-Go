@@ -254,7 +254,7 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           echo "vm_ip=$(terraform output -raw vm_public_ip)" >> $GITHUB_OUTPUT
-          echo "vm_username=azureuser" >> $GITHUB_OUTPUT
+          echo "vm_user=azureuser" >> $GITHUB_OUTPUT
           echo " VM outputs extracted"
 
       - name: Update GitHub Secrets
@@ -263,7 +263,7 @@ jobs:
           
           # 1. Validate Inputs
           VM_IP="${{ steps.out.outputs.vm_ip }}"
-          VM_USER="${{ steps.out.outputs.vm_username }}"
+          VM_USER="${{ steps.out.outputs.vm_user }}"
           
           if [ -z "$VM_IP" ]; then
             echo " ERROR: VM_IP is empty. Terraform might not have created the VM."
