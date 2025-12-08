@@ -117,7 +117,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0
+          terraform_version: 1.14.0
           terraform_wrapper: false
 
       # Generate SSH key ONCE during plan stage
@@ -212,7 +212,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0
+          terraform_version: 1.14.0
           terraform_wrapper: false
 
       - name: Azure Login
@@ -543,7 +543,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0
+          terraform_version: 1.14.0
           terraform_wrapper: false
 
       - name: Azure Login
