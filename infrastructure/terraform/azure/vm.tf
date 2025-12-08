@@ -52,9 +52,19 @@ resource "azurerm_linux_virtual_machine" "main" {
     azurerm_network_interface.vm.id,
   ]
 
+  # Primary SSH key (GitHub Actions generated)
   admin_ssh_key {
     username   = var.admin_username
     public_key = var.ssh_public_key
+  }
+
+  # Additional SSH keys (local developer keys, etc.)
+  dynamic "admin_ssh_key" {
+    for_each = var.additional_ssh_keys
+    content {
+      username   = var.admin_username
+      public_key = admin_ssh_key.value
+    }
   }
 
   os_disk {

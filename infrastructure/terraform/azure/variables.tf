@@ -70,6 +70,12 @@ variable "ssh_public_key" {
   type        = string
 }
 
+variable "additional_ssh_keys" {
+  description = "Additional SSH public keys for VM access (e.g., local developer keys)"
+  type        = list(string)
+  default     = []
+}
+
 variable "allowed_ssh_cidr" {
   description = "CIDR block allowed to SSH into the VM"
   type        = string

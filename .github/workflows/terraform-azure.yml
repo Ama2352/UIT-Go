@@ -31,12 +31,6 @@ env:
   TF_STATE_STORAGE: uitgotfstate
   TF_STATE_CONTAINER: tfstate
 
-  # Azure credentials provided by GitHub Secrets
-  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
   # Map secrets to Terraform variables
   TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
   TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -81,7 +75,7 @@ jobs:
               echo "Creating resource group: $RG"
               az group create --name $RG --location $LOCATION
             else
-              echo "✅ Resource group exists: $RG"
+              echo " Resource group exists: $RG"
             fi
 
             # Create storage account if needed
@@ -94,7 +88,7 @@ jobs:
                 --sku Standard_LRS
               sleep 10
             else
-              echo "✅ Storage account exists: $STORAGE"
+              echo " Storage account exists: $STORAGE"
             fi
 
             # Create container if missing
@@ -103,7 +97,7 @@ jobs:
               --account-name $STORAGE \
               --auth-mode login || true
             
-            echo "✅ Backend infrastructure ready"
+            echo " Backend infrastructure ready"
 
 
 # =============================================================================
@@ -137,7 +131,7 @@ jobs:
         run: |
           mkdir -p ssh-artifacts
           ssh-keygen -t rsa -b 4096 -f ssh-artifacts/id_rsa -N "" -C "github-actions@uitgo"
-          echo "✅ SSH key generated"
+          echo " SSH key generated"
 
       - name: Azure Login
         uses: azure/login@v2
@@ -160,6 +154,10 @@ jobs:
       - name: Terraform Plan
         id: check
         working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          # Local SSH key loaded safely through environment variable (NO space splitting)
+          TF_VAR_additional_ssh_keys: |
+            ["${{ secrets.LOCAL_SSH_PUBLIC_KEY }}"]
         run: |
           terraform plan \
             -var="ssh_public_key=$(cat $GITHUB_WORKSPACE/ssh-artifacts/id_rsa.pub)" \
@@ -168,12 +166,12 @@ jobs:
 
           if [ "$EXIT" = "0" ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "✅ Plan complete - no changes"
+            echo " Plan complete - no changes"
           elif [ "$EXIT" = "2" ]; then 
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "✅ Plan complete - changes detected"
+            echo " Plan complete - changes detected"
           else
-            echo "❌ Terraform Plan Failed!"
+            echo " Terraform Plan Failed!"
             exit 1
           fi
 
@@ -217,11 +215,11 @@ jobs:
           echo "Checking for tfplan file..."
           ls -la ${{ env.TF_WORKING_DIR }}/ || true
           if [ ! -f ${{ env.TF_WORKING_DIR }}/tfplan ]; then
-            echo "❌ ERROR: No tfplan file found."
+            echo " ERROR: No tfplan file found."
             echo "Plan must run before apply in the same workflow."
             exit 1
           fi
-          echo "✅ tfplan found"
+          echo " tfplan found"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -249,7 +247,7 @@ jobs:
         run: |
           echo "Applying infrastructure changes..."
           terraform apply -auto-approve tfplan
-          echo "✅ Infrastructure applied successfully"
+          echo " Infrastructure applied successfully"
 
       - name: Extract Outputs
         id: out
@@ -257,7 +255,7 @@ jobs:
         run: |
           echo "vm_ip=$(terraform output -raw vm_public_ip)" >> $GITHUB_OUTPUT
           echo "vm_username=azureuser" >> $GITHUB_OUTPUT
-          echo "✅ VM outputs extracted"
+          echo " VM outputs extracted"
 
       - name: Update GitHub Secrets
         run: |
@@ -268,7 +266,7 @@ jobs:
           VM_USER="${{ steps.out.outputs.vm_username }}"
           
           if [ -z "$VM_IP" ]; then
-            echo "❌ ERROR: VM_IP is empty. Terraform might not have created the VM."
+            echo " ERROR: VM_IP is empty. Terraform might not have created the VM."
             exit 1
           fi
 
@@ -279,7 +277,7 @@ jobs:
           # 3. Set SSH Key from file (preserves newlines correctly)
           gh secret set AZURE_VM_SSH_KEY < ssh-artifacts/id_rsa
           
-          echo "✅ GitHub secrets updated"
+          echo " GitHub secrets updated"
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN_WITH_SECRET_WRITE }}
 
@@ -315,12 +313,12 @@ jobs:
           echo "Checking SSH key artifact..."
           ls -la ssh-key/
           if [ ! -f ssh-key/id_rsa ]; then
-            echo "❌ ERROR: SSH private key not found"
+            echo " ERROR: SSH private key not found"
             exit 1
           fi
           # Set correct permissions
           chmod 600 ssh-key/id_rsa
-          echo "✅ SSH key verified and permissions set"
+          echo " SSH key verified and permissions set"
 
       - name: Wait for VM cloud-init
         run: |
@@ -374,12 +372,12 @@ jobs:
             
             # Verify docker-compose.yml exists
             if [ ! -f "docker-compose.yml" ]; then
-              echo "❌ ERROR: docker-compose.yml not found in $(pwd)"
+              echo " ERROR: docker-compose.yml not found in $(pwd)"
               ls -la
               exit 1
             fi
             
-            echo "✅ Repository ready at $(pwd)"
+            echo " Repository ready at $(pwd)"
             
             # Create .env file if it doesn't exist
             if [ ! -f ".env" ]; then
@@ -405,7 +403,7 @@ jobs:
             RABBITMQ_USER=guest
             RABBITMQ_PASSWORD=guest
             EOF
-              echo "✅ .env file created"
+              echo " .env file created"
             fi
             
             # Generate JWT RSA key pair if they don't exist
@@ -431,9 +429,9 @@ jobs:
             
             # Verify keys exist and are files
             if [ -f "services/user-service/private.pem" ] && [ -f "services/shared/public.pem" ]; then
-              echo "✅ JWT key files are ready"
+              echo " JWT key files are ready"
             else
-              echo "❌ ERROR: Failed to create JWT key files"
+              echo " ERROR: Failed to create JWT key files"
               exit 1
             fi
             
@@ -464,7 +462,7 @@ jobs:
             done
             
             echo ""
-            echo "✅ Deployment complete!"
+            echo " Deployment complete!"
 
       - name: Health Check & API Tests
         run: |
@@ -488,10 +486,10 @@ jobs:
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$url" 2>/dev/null || echo "000")
             
             if [ "$HTTP_STATUS" = "000" ]; then
-              echo "❌ FAILED: Could not connect to $name"
+              echo " FAILED: Could not connect to $name"
               return 1
             elif [ "$HTTP_STATUS" = "$expected_code" ]; then
-              echo "✅ PASSED: $name responded with status $HTTP_STATUS"
+              echo " PASSED: $name responded with status $HTTP_STATUS"
               return 0
             else
               echo "⚠️ WARNING: $name responded with status $HTTP_STATUS (expected $expected_code)"
@@ -548,7 +546,7 @@ jobs:
             echo "⚠️ WARNING: Some tests failed. Services might still be starting up."
             echo "Please check the VM logs for more details."
           else
-            echo "✅ All health checks passed!"
+            echo " All health checks passed!"
           fi
           
           echo ""
@@ -608,7 +606,7 @@ jobs:
           terraform destroy -auto-approve \
             -var="ssh_public_key=dummy-key-not-used-for-destroy" \
             || true
-          echo "✅ Infrastructure destroyed"
+          echo " Infrastructure destroyed"
 
       - name: Destroy Backend Storage
         uses: azure/cli@v2
@@ -625,7 +623,7 @@ jobs:
             echo "Deleting backend resource group..."
             az group delete --name ${{ env.TF_STATE_RG }} --yes --no-wait || true
             
-            echo "✅ Resource groups marked for deletion"
+            echo " Resource groups marked for deletion"
 
       - name: Clear GitHub Secrets
         run: |
@@ -633,7 +631,7 @@ jobs:
           gh secret delete AZURE_VM_HOST || true
           gh secret delete AZURE_VM_USERNAME || true
           gh secret delete AZURE_VM_SSH_KEY || true
-          echo "✅ Secrets cleared"
+          echo " Secrets cleared"
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN_WITH_SECRET_WRITE }}
 
