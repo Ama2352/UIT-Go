@@ -349,7 +349,7 @@ jobs:
         with:
           host: ${{ needs.apply.outputs.vm_ip }}
           username: ${{ needs.apply.outputs.vm_user }}
-          key_path: ssh-key/id_rsa
+          key_path: ${{ secrets.AZURE_VM_SSH_KEY }}
           command_timeout: 15m
           script: |
             echo "=========================================="
