@@ -339,7 +339,11 @@ jobs:
             echo "❌ ERROR: SSH private key not found"
             exit 1
           fi
-          chmod 600 ssh-key/id_rsa
+          # Use absolute path to avoid path resolution issues inside action container
+          SSH_KEY_PATH="${{ github.workspace }}/ssh-key/id_rsa"
+          chmod 600 "$SSH_KEY_PATH"
+          ls -l "$SSH_KEY_PATH"
+          echo "SSH_KEY_PATH=$SSH_KEY_PATH" >> $GITHUB_ENV
           echo "✅ SSH key verified and permissions set"
 
       - name: Wait for VM cloud-init
@@ -352,7 +356,7 @@ jobs:
         with:
           host: ${{ needs.apply.outputs.vm_ip }}
           username: ${{ needs.apply.outputs.vm_user }}
-          key_path: ssh-key/id_rsa
+          key_path: ${{ env.SSH_KEY_PATH }}
           command_timeout: 15m
           script: |
             echo "=========================================="
