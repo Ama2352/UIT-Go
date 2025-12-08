@@ -1,7 +1,12 @@
 # =============================================================================
-# Terraform Workflow for UIT-Go Application
+# Terraform Workflow for UIT-Go Application (Azure Only)
 # =============================================================================
-# Key improvements:
+# NOTE: This workflow is specifically designed for Azure deployments.
+# Although the Terraform code supports LocalStack and AWS, this workflow
+# hardcodes "cloud_provider=azure" to ensure consistent production-like
+# deployments to Azure.
+#
+# Key features:
 # - Deterministic plan → apply using artifacts
 # - Stable SSH key (generated once per plan)
 # - Clean destroy path
@@ -9,7 +14,7 @@
 # - No "plan" action that runs separately
 # =============================================================================
 
-name: Infrastructure - Terraform
+name: Infrastructure - Terraform (Azure)
 
 on:
   workflow_dispatch:
@@ -31,6 +36,12 @@ env:
   ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
   ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+  # Map secrets to Terraform variables
+  TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+  TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+  TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
 
 
 # =============================================================================
@@ -156,13 +167,15 @@ jobs:
             -out=tfplan \
             -detailed-exitcode || EXIT=$?
 
-          # Mark if changes exist (exit code 2 = changes detected)
-          if [ "$EXIT" = "2" ]; then 
+          if [ "$EXIT" = "0" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ Plan complete - no changes"
+          elif [ "$EXIT" = "2" ]; then 
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "✅ Plan complete - changes detected"
           else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "✅ Plan complete - no changes"
+            echo "❌ Terraform Plan Failed!"
+            exit 1
           fi
 
       - name: Upload Plan + SSH Keys
@@ -605,10 +618,3 @@ jobs:
           echo ""
           echo "=========================================="
           echo "Terraform Destroy Complete!"
-          echo "=========================================="
-          echo "All infrastructure and backend resources"
-          echo "have been destroyed or marked for deletion."
-          echo ""
-          echo "Note: Azure may take a few minutes to fully"
-          echo "remove all resources in the background."
-          echo "=========================================="

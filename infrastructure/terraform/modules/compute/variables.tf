@@ -52,6 +52,12 @@ variable "ssh_public_key_path" {
   default     = "~/.ssh/id_rsa.pub"
 }
 
+variable "ssh_public_key" {
+  description = "The actual SSH public key content (passed from CI/CD)"
+  type        = string
+  default     = ""
+}
+
 variable "enable_public_ip" {
   description = "Whether to assign a public IP to the VM"
   type        = bool
