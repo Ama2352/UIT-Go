@@ -12,16 +12,43 @@ services:
       POSTGRES_USER: ${USERDB_USERNAME}
       POSTGRES_PASSWORD: ${USERDB_PASSWORD}
       POSTGRES_DB: ${USERDB_DATABASE}
+      POSTGRES_REPLICATION_USER: ${USERDB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${USERDB_REPLICATION_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
       - user_postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/user-primary/main/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
+      - ./infrastructure/postgres/user-primary/main/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/var/lib/postgresql/data/postgresql.conf"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
-
+  user-replica:
+    image: postgres:15-alpine
+    container_name: user-replica
+    restart: unless-stopped
+    networks:
+      - uit-go-network
+    environment:
+      POSTGRES_USER: ${USERDB_USERNAME}
+      POSTGRES_PASSWORD: ${USERDB_PASSWORD}
+      POSTGRES_DB: ${USERDB_DATABASE}
+    ports:
+      - "5435:5432"
+    volumes:
+      - user_replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
   user-service:
     build: ./services/user-service
     container_name: user-service
@@ -235,4 +262,5 @@ volumes:
   user_postgres_data:
   trip_postgres_data:
   rabbitmq_data:
+  user_replica_data:
  
