@@ -7,7 +7,7 @@ output "vm_public_ip" {
   value       = azurerm_public_ip.vm.ip_address
 }
 
-output "vm_username" {
+output "admin_username" {
   description = "Admin username for the VM"
   value       = var.admin_username
 }

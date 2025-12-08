@@ -275,6 +275,10 @@ jobs:
         run: |
           echo "vm_ip=$(terraform output -raw vm_public_ip)" >> "$GITHUB_OUTPUT"
           echo "vm_user=$(terraform output -raw admin_username)" >> "$GITHUB_OUTPUT"
+          
+          # Debug: Print outputs for verification
+          echo "VM IP: $(terraform output -raw vm_public_ip)"
+          echo "VM User: $(terraform output -raw admin_username)"
 
       # Update GitHub secrets for future runs
       - name: Update GitHub Secrets
