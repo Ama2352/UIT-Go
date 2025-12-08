@@ -1,6 +1,7 @@
 package se360.trip_service.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
@@ -97,6 +98,7 @@ public class TripService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public Optional<TripResponse> getTripById(UUID id) {
         return tripRepository.findById(id)
                 .map(tripMapper::toResponse);
