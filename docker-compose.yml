@@ -82,16 +82,44 @@ services:
       POSTGRES_USER: ${USERDB_USERNAME}
       POSTGRES_PASSWORD: ${USERDB_PASSWORD}
       POSTGRES_DB: ${USERDB_DATABASE}
+      POSTGRES_REPLICATION_USER: ${USERDB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${USERDB_REPLICATION_PASSWORD}
+      USERDB_REPLICA_URL: postgresql://${USERDB_REPLICATION_USER}:${USERDB_REPLICATION_PASSWORD}@user-replica:5432/postgres
     ports:
       - "5433:5432"
     volumes:
       - user_postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/user-primary/main/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
+      - ./infrastructure/postgres/user-primary/main/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/var/lib/postgresql/data/postgresql.conf"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
-
+  user-replica:
+    image: postgres:15-alpine
+    container_name: user-replica
+    restart: unless-stopped
+    networks:
+      - uit-go-network
+    environment:
+      POSTGRES_USER: ${USERDB_USERNAME}
+      POSTGRES_PASSWORD: ${USERDB_PASSWORD}
+      POSTGRES_DB: ${USERDB_DATABASE}
+    ports:
+      - "5435:5432"
+    volumes:
+      - user_replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
   user-service:
     build: ./services/user-service
     container_name: user-service
@@ -103,7 +131,9 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: postgresql://${USERDB_USERNAME}:${USERDB_PASSWORD}@user-postgres:5432/postgres
+      USERDB_REPLICA_URL: postgresql://${USERDB_USERNAME}:${USERDB_PASSWORD}@user-replica:5432/postgres
+      USER_REPLICA_STRICT: ${USER_REPLICA_STRICT:-true}
       JWT_PRIVATE_KEY_PATH: /app/private.pem
       JWT_PUBLIC_KEY_PATH: /app/public.pem
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
@@ -125,12 +155,40 @@ services:
       POSTGRES_USER: ${TRIPDB_USERNAME}
       POSTGRES_PASSWORD: ${TRIPDB_PASSWORD}
       POSTGRES_DB: ${TRIPDB_DATABASE}
+      POSTGRES_REPLICATION_USER: ${TRIPDB_REPLICATION_USER}
+      POSTGRES_REPLICATION_PASSWORD: ${TRIPDB_REPLICATION_PASSWORD}
     ports:
       - "5434:5432"
     volumes:
       - trip_postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/trip-primary/main/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
+      - ./infrastructure/postgres/trip-primary/main/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/var/lib/postgresql/data/postgresql.conf"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${TRIPDB_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  trip-replica:
+    image: postgres:15-alpine
+    container_name: trip-replica
+    restart: unless-stopped
+    networks:
+      - uit-go-network
+    environment:
+      POSTGRES_USER: ${TRIPDB_USERNAME}
+      POSTGRES_PASSWORD: ${TRIPDB_PASSWORD}
+      POSTGRES_DB: ${TRIPDB_DATABASE}
+    ports:
+      - "5436:5432"
+    volumes:
+      - trip_replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -151,9 +209,10 @@ services:
     environment:
       REDIS_HOST: driver-redis
       REDIS_PORT: 6379
-      SPRING_DATASOURCE_URL: ${TRIPDB_URL}
-      SPRING_DATASOURCE_USERNAME: ${TRIPDB_USERNAME}
-      SPRING_DATASOURCE_PASSWORD: ${TRIPDB_PASSWORD}
+      TRIPDB_URL: jdbc:postgresql://trip-postgres:5432/${TRIPDB_DATABASE}
+      TRIPDB_REPLICA_URL: jdbc:postgresql://trip-replica:5432/${TRIPDB_DATABASE}
+      TRIPDB_USERNAME: ${TRIPDB_USERNAME}
+      TRIPDB_PASSWORD: ${TRIPDB_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: none
     ports:
       - "8081:8081"
@@ -293,3 +352,6 @@ volumes:
   user_postgres_data:
   trip_postgres_data:
   rabbitmq_data:
+  user_replica_data:
+  trip_replica_data:
+ 
