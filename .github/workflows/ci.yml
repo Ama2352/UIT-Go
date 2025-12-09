@@ -11,7 +11,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ "**" ]  # All branches
+    branches: [ main ]  # All branches
   pull_request:
     branches: [ main ]
   workflow_dispatch:

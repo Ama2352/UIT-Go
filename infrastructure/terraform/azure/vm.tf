@@ -3,6 +3,12 @@
 # =============================================================================
 
 locals {
+  # Filter out empty strings from additional SSH keys
+  valid_additional_ssh_keys = [
+    for key in var.additional_ssh_keys : key
+    if trimspace(key) != ""
+  ]
+
   cloud_init_script = <<-EOF
     #cloud-config
     package_update: true
@@ -43,18 +49,30 @@ locals {
 }
 
 resource "azurerm_linux_virtual_machine" "main" {
-  name                = "${var.project_name}-vm"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  size                = var.vm_size
-  admin_username      = var.admin_username
+  name                            = "${var.project_name}-vm"
+  resource_group_name             = azurerm_resource_group.main.name
+  location                        = azurerm_resource_group.main.location
+  size                            = var.vm_size
+  admin_username                  = var.admin_username
+  disable_password_authentication = true
   network_interface_ids = [
     azurerm_network_interface.vm.id,
   ]
 
+  # Primary SSH key (GitHub Actions generated)
   admin_ssh_key {
     username   = var.admin_username
     public_key = var.ssh_public_key
+  }
+
+  # Additional SSH keys (local developer keys, etc.)
+  # Only adds non-empty keys
+  dynamic "admin_ssh_key" {
+    for_each = local.valid_additional_ssh_keys
+    content {
+      username   = var.admin_username
+      public_key = admin_ssh_key.value
+    }
   }
 
   os_disk {
