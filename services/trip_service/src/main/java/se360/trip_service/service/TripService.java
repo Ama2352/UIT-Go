@@ -1,6 +1,9 @@
 package se360.trip_service.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.hibernate.StaleObjectStateException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,6 +19,7 @@ import se360.trip_service.model.dtos.EstimateFareRequest;
 import se360.trip_service.model.dtos.RateTripRequest;
 import se360.trip_service.model.entities.Trip;
 import se360.trip_service.model.entities.TripRating;
+import se360.trip_service.model.enums.AcceptResult;
 import se360.trip_service.model.enums.TripStatus;
 import se360.trip_service.model.enums.VehicleType;
 import se360.trip_service.repository.TripRepository;
@@ -31,6 +35,7 @@ import java.util.UUID;
 import java.util.List;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class TripService {
 
@@ -38,6 +43,7 @@ public class TripService {
     private final TripRepository tripRepository;
     private final TripMapper tripMapper;
     private final TripRatingRepository tripRatingRepository;
+    private final TripAssignmentLockService lockService;
 
     // ░░░ ESTIMATE FARE ░░░
     public EstimateFareResponse estimateFare(EstimateFareRequest req) {
@@ -45,15 +51,13 @@ public class TripService {
                 req.getPickupLat(),
                 req.getPickupLng(),
                 req.getDropoffLat(),
-                req.getDropoffLng()
-        );
+                req.getDropoffLng());
 
         BigDecimal estimatedPrice = calculateFare(distanceKm, req.getVehicleType(), false);
 
         return new EstimateFareResponse(
                 distanceKm.setScale(2, RoundingMode.HALF_UP),
-                estimatedPrice.setScale(0, RoundingMode.HALF_UP)
-        );
+                estimatedPrice.setScale(0, RoundingMode.HALF_UP));
     }
 
     // ░░░ CREATE TRIP + publish trip.requested ░░░
@@ -68,8 +72,7 @@ public class TripService {
                 req.getPickupLat(),
                 req.getPickupLng(),
                 req.getDropoffLat(),
-                req.getDropoffLng()
-        );
+                req.getDropoffLng());
 
         trip.setDistanceKm(distanceKm);
         trip.setEstimatedPrice(calculateFare(distanceKm, req.getVehicleType(), false));
@@ -132,16 +135,65 @@ public class TripService {
         });
     }
 
-    // ░░░ ACCEPT TRIP ░░░
-    public Optional<TripResponse> acceptTrip(UUID id, UUID driverId) {
-        return tripRepository.findById(id).map(trip -> {
+    // ░░░ ACCEPT TRIP WITH LOCK (NEW - replaces event-based accept) ░░░
+    /**
+     * Accept a trip with distributed lock and early state validation.
+     * 
+     * Flow:
+     * 1. Try to acquire SETNX lock with 5s TTL (atomic, prevents race)
+     * 2. Fetch trip and check if status is SEARCHING
+     * 3. Update DB to ASSIGNED status
+     * 4. Publish trip.assigned event
+     * 
+     * IMPORTANT: Lock MUST be acquired BEFORE reading trip to prevent
+     * stale read race conditions.
+     * 
+     * @param tripId   The trip to accept
+     * @param driverId The driver accepting the trip
+     * @return AcceptResult indicating success or failure reason
+     */
+    @Transactional
+    public AcceptResult acceptTripWithLock(UUID tripId, UUID driverId) {
+        // 1. Try to acquire lock FIRST (one-shot, no retry)
+        // This MUST happen before reading the trip to prevent race conditions
+        boolean acquired = lockService.tryAcquire(tripId, driverId, 5);
+        if (!acquired) {
+            return AcceptResult.ALREADY_ASSIGNED;
+        }
+
+        // 2. Find trip (now protected by lock - we have exclusive access)
+        Optional<Trip> tripOpt = tripRepository.findById(tripId);
+        if (tripOpt.isEmpty()) {
+            return AcceptResult.TRIP_NOT_FOUND;
+        }
+
+        Trip trip = tripOpt.get();
+
+        // 3. State check - filter requests for already-assigned trips
+        if (trip.getTripStatus() != TripStatus.SEARCHING) {
+            return AcceptResult.ALREADY_ASSIGNED;
+        }
+
+        // 4. Update DB (fresh trip object, correct version)
+        try {
             trip.setDriverId(driverId);
-            trip.setTripStatus(TripStatus.ACCEPTED);
+            trip.setTripStatus(TripStatus.ASSIGNED);
             trip.setAcceptedAt(LocalDateTime.now());
             trip.setUpdatedAt(LocalDateTime.now());
-            Trip saved = tripRepository.save(trip);
-            return tripMapper.toResponse(saved);
-        });
+            tripRepository.saveAndFlush(trip);
+        } catch (StaleObjectStateException | ObjectOptimisticLockingFailureException e) {
+            // Another driver won the race at the DB level - return graceful conflict
+            log.warn("Optimistic lock conflict for trip {}: another driver assigned first", tripId);
+            return AcceptResult.ALREADY_ASSIGNED;
+        }
+
+        // 5. Publish event for DriverService to notify via WebSocket
+        TripAssignedEvent event = new TripAssignedEvent();
+        event.setTripId(tripId);
+        event.setDriverId(driverId);
+        eventPublisher.publishTripAssigned(event);
+
+        return AcceptResult.SUCCESS;
     }
 
     // ░░░ START TRIP + publish trip.started ░░░

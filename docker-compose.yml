@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # =====================================
   # EXPORTERS
@@ -41,7 +39,7 @@ services:
     container_name: postgres-exporter-user
     restart: unless-stopped
     environment:
-      DATA_SOURCE_URI: "user-postgres:5432/user_db?sslmode=disable"
+      DATA_SOURCE_URI: "user-postgres:5432/${USERDB_DATABASE}?sslmode=disable"
       DATA_SOURCE_USER: ${USERDB_USERNAME}
       DATA_SOURCE_PASS: ${USERDB_PASSWORD}
     ports:
@@ -49,7 +47,9 @@ services:
     networks:
       - uit-go-network
     depends_on:
-      - user-postgres
+      user-postgres:
+        condition: service_healthy
+
 
   # 4. Postgres Trip DB Exporter
   postgres-exporter-trip:
@@ -57,7 +57,7 @@ services:
     container_name: postgres-exporter-trip
     restart: unless-stopped
     environment:
-      DATA_SOURCE_URI: "trip-postgres:5432/trip_db?sslmode=disable"
+      DATA_SOURCE_URI: "trip-postgres:5432/${TRIPDB_DATABASE}?sslmode=disable"
       DATA_SOURCE_USER: ${TRIPDB_USERNAME}
       DATA_SOURCE_PASS: ${TRIPDB_PASSWORD}
     ports:
@@ -65,7 +65,9 @@ services:
     networks:
       - uit-go-network
     depends_on:
-      - trip-postgres
+      trip-postgres:
+        condition: service_healthy
+
 
   # =====================================
   # APPLICATION SERVICES

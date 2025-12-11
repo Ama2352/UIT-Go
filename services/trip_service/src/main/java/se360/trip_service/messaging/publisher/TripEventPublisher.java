@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 import se360.trip_service.messaging.RabbitMQConfiguration;
+import se360.trip_service.messaging.events.TripAssignedEvent;
 import se360.trip_service.messaging.events.TripCancelledEvent;
 import se360.trip_service.messaging.events.TripCompletedEvent;
 import se360.trip_service.messaging.events.TripRequestedEvent;
@@ -19,32 +20,35 @@ public class TripEventPublisher {
         rabbitTemplate.convertAndSend(
                 RabbitMQConfiguration.EXCHANGE,
                 RabbitMQConfiguration.ROUTING_KEY,
-                event
-        );
+                event);
     }
+
+    public void publishTripAssigned(TripAssignedEvent event) {
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfiguration.EXCHANGE,
+                "trip.assigned",
+                event);
+    }
+
     public void publishTripStarted(TripStartedEvent event) {
         rabbitTemplate.convertAndSend(
                 RabbitMQConfiguration.EXCHANGE,
-                "trip.started",   // routing key — tạm hardcode
-                event
-        );
+                "trip.started", // routing key — tạm hardcode
+                event);
     }
 
     public void publishTripCompleted(TripCompletedEvent event) {
         rabbitTemplate.convertAndSend(
                 RabbitMQConfiguration.EXCHANGE,
                 "trip.completed",
-                event
-        );
+                event);
     }
 
     public void publishTripCancelled(TripCancelledEvent event) {
         rabbitTemplate.convertAndSend(
                 RabbitMQConfiguration.EXCHANGE,
                 "trip.cancelled",
-                event
-        );
+                event);
     }
 
 }
-
