@@ -1,14 +1,17 @@
 package se360.trip_service.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import se360.trip_service.model.dtos.AcceptTripRequest;
 import se360.trip_service.model.dtos.CreateTripRequest;
 import se360.trip_service.model.dtos.TripResponse;
 import se360.trip_service.model.dtos.EstimateFareResponse;
 import se360.trip_service.model.dtos.EstimateFareRequest;
 import se360.trip_service.model.dtos.RateTripRequest;
 import se360.trip_service.model.dtos.TripRatingResponse;
+import se360.trip_service.model.enums.AcceptResult;
 import se360.trip_service.model.enums.VehicleType;
 import se360.trip_service.service.TripService;
 
@@ -57,9 +60,6 @@ public class TripController {
         return ResponseEntity.ok(fare);
     }
 
-
-
-
     @PostMapping("/{id}/start")
     public ResponseEntity<TripResponse> startTrip(@PathVariable UUID id) {
         return tripService.startTrip(id)
@@ -94,5 +94,18 @@ public class TripController {
     @GetMapping("/ping")
     public String ping() {
         return "Welcome to Trip Service!";
+    }
+
+    @PutMapping("/{tripId}/accept")
+    public ResponseEntity<AcceptResult> acceptTrip(
+            @PathVariable UUID tripId,
+            @RequestBody AcceptTripRequest request) {
+        AcceptResult result = tripService.acceptTripWithLock(tripId, request.getDriverId());
+
+        return switch (result) {
+            case SUCCESS -> ResponseEntity.ok(result);
+            case ALREADY_ASSIGNED -> ResponseEntity.status(HttpStatus.CONFLICT).body(result);
+            case TRIP_NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(result);
+        };
     }
 }

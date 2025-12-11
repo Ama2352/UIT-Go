@@ -1,19 +1,19 @@
 package se360.driver_service.controllers;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
-import se360.driver_service.messaging.publisher.TripEventPublisher;
-import se360.driver_service.messaging.events.TripAssignedEvent;
+import se360.driver_service.models.AcceptTripRequest;
 import se360.driver_service.services.DriverService;
-import se360.driver_service.services.TripAssignmentLockService;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -21,9 +21,13 @@ import java.util.UUID;
 @RequestMapping("/drivers")
 public class DriverController {
 
+    private static final Logger log = LoggerFactory.getLogger(DriverController.class);
+
     private final DriverService driverService;
-    private final TripEventPublisher eventPublisher;
-    private final TripAssignmentLockService tripAssignmentLockService;
+    private final RestTemplate restTemplate;
+
+    @Value("${trip.service.url}")
+    private String tripServiceUrl;
 
     @PutMapping("/{driverId}/online")
     public ResponseEntity<String> goOnline(@PathVariable String driverId) {
@@ -55,35 +59,37 @@ public class DriverController {
         return ResponseEntity.ok(drivers);
     }
 
+    /**
+     * Forward accept trip request to TripService.
+     * 
+     * TripService now owns: early state check + SETNX lock + DB update + event
+     * publishing.
+     * DriverService is just a simple forwarder for the accept action.
+     */
     @PutMapping("/{driverId}/trips/{tripId}/accept")
     public ResponseEntity<String> acceptTrip(
             @PathVariable UUID driverId,
-            @PathVariable UUID tripId
-    ) {
-        boolean acquired = tripAssignmentLockService.tryAcquire(tripId, driverId, 30);
-        if (!acquired) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body("Trip already assigned to another driver.");
+            @PathVariable UUID tripId) {
+        String url = tripServiceUrl + "/trips/" + tripId + "/accept";
+        AcceptTripRequest request = new AcceptTripRequest(driverId);
+
+        try {
+            // Forward request to TripService - it handles all business logic and error
+            // cases
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.PUT,
+                    new HttpEntity<>(request),
+                    String.class);
+
+            return response; // Forward response as-is (200 OK or 409 Conflict)
+        } catch (Exception e) {
+            // Only catch network/communication errors
+            log.error("Error forwarding accept request to TripService", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to communicate with TripService: " + e.getMessage());
         }
-
-        UUID passengerId = driverService.getPassengerIdForTrip(tripId);
-        if (passengerId == null) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body("Trip passengerId not found in Redis cache.");
-        }
-
-        TripAssignedEvent event = TripAssignedEvent.builder()
-                .tripId(tripId)
-                .driverId(driverId)
-                .passengerId(passengerId)
-                .build();
-
-        eventPublisher.publishTripAssigned(event);
-
-        return ResponseEntity.ok("Driver accepted trip & trip.assigned published!");
     }
-
-
 
     @GetMapping("/ping")
     public String ping() {

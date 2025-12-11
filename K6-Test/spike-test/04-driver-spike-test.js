@@ -207,30 +207,14 @@ export default function () {
 
     sleep(0.5);
 
-    // 3. TÀI XẾ NHẬN CHUYẾN (CÓ RETRY & CHECK TỐI ƯU)
-    let attempts = 5;
-    let acceptRes;
+    // 3. DRIVER ACCEPTS TRIP (ONE-SHOT - no retry needed)
+    // TripService now handles early state check + SETNX lock
+    const acceptRes = http.put(`${DRIVER_API}/drivers/${driverId}/trips/${tripId}/accept`, null, {
+        headers: headers,
+        tags: { name: 'Driver_Accept_Spike' }
+    });
 
-    while (attempts > 0) {
-        acceptRes = http.put(`${DRIVER_API}/drivers/${driverId}/trips/${tripId}/accept`, null, {
-            headers: headers,
-            tags: { name: 'Driver_Accept_Spike' }
-        });
-
-        if (acceptRes.status === 200) {
-            break;
-        } else if (acceptRes.status === 409) {
-            break;
-        } else if (acceptRes.status === 400 && acceptRes.body && acceptRes.body.includes("Redis")) {
-            sleep(1);
-            attempts--;
-        } else {
-            console.error(`Accept Fatal Error: ${acceptRes.status} - ${acceptRes.body}`);
-            break;
-        }
-    }
-
-    // CHẠY CHECK TRÊN acceptRes ĐÃ CẬP NHẬT
+    // Check for success (200) or conflict (409 = already assigned)
     check(acceptRes, {
         'Driver Accepted Success or Conflict (200/409)': (r) => r && (r.status === 200 || r.status === 409),
         'No Fatal Timeout/500': (r) => r && (r.status < 500 || r.status >= 503),

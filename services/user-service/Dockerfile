@@ -7,8 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (use mirror registry for better connectivity)
+RUN npm config set registry https://registry.npmmirror.com && npm ci
 
 # Copy source code
 COPY . .
@@ -31,8 +31,8 @@ RUN apk add --no-cache openssl
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install production dependencies only
-RUN npm ci --only=production
+# Install production dependencies only (use mirror registry for better connectivity)
+RUN npm config set registry https://registry.npmmirror.com && npm ci --only=production
 
 # Copy Prisma generated client from builder
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
