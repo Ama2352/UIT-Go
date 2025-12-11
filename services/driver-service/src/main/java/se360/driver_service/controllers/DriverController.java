@@ -82,7 +82,9 @@ public class DriverController {
                     new HttpEntity<>(request),
                     String.class);
 
-            return response; // Forward response as-is (200 OK or 409 Conflict)
+            return ResponseEntity
+                    .status(response.getStatusCode())
+                    .body(response.getBody());
         } catch (Exception e) {
             // Only catch network/communication errors
             log.error("Error forwarding accept request to TripService", e);
