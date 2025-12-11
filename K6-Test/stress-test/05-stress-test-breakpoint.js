@@ -6,9 +6,9 @@ import { sleep, check } from 'k6';
 // ==========================================
 export const options = {
     stages: [
-        // Tăng tải liên tục từ 0 lên 3000 VU trong 30 phút
-        { duration: '30m', target: 3000 },
-        { duration: '2m',  target: 3000 },
+        // Tăng tải liên tục từ 0 lên 3000 VU trong 18 phút
+        { duration: '18m', target: 3000 },        
+        { duration: '1m',  target: 3000 },
         { duration: '1m',  target: 0 },
     ],
     // Đặt ngưỡng cực kỳ lỏng lẻo để không làm gián đoạn bài test
@@ -68,10 +68,16 @@ export default function () {
     const driverLoc = getDriverLocationNearPickup(pickup.lat, pickup.lng);
 
     // 1. DRIVER ONLINE & LOCATION (PUT)
-    const onlineRes = http.put(`${DRIVER_API}/drivers/${driverId}/online`, null, { headers: headers });
+    const onlineRes = http.put(`${DRIVER_API}/drivers/${driverId}/online`, null, { 
+        headers: headers,
+        tags: { name: 'Driver_Online' }
+    });
     check(onlineRes, { 'Driver Online Success': (r) => r.status === 200 });
     const locationUrl = `${DRIVER_API}/drivers/${driverId}/location?lat=${driverLoc.lat}&lng=${driverLoc.lng}`;
-    http.put(locationUrl, null, { headers: headers });
+    http.put(locationUrl, null, { 
+        headers: headers,
+        tags: { name: 'Driver_Location_Update' }
+    });
     sleep(0.5);
 
     // 2. PASSENGER CREATE TRIP (POST)
