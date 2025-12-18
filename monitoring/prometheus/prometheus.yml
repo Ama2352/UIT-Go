@@ -2,28 +2,36 @@ global:
   scrape_interval: 15s #
 
 scrape_configs:
-
-  - job_name: 'prometheus'
+  - job_name: "prometheus"
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ["localhost:9090"]
 
+  # Node Exporter
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+
+  # cAdvisor
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
 
   # Redis
-  - job_name: 'redis-exporter'
+  - job_name: "redis-exporter"
     static_configs:
-      - targets: ['host.docker.internal:9121']
+      - targets: ["host.docker.internal:9121"]
 
   # RabbitMQ
-  - job_name: 'rabbitmq-exporter'
+  - job_name: "rabbitmq-exporter"
     static_configs:
-      - targets: ['host.docker.internal:9419']
+      - targets: ["host.docker.internal:9419"]
 
   # Postgres User DB
-  - job_name: 'postgres-user'
+  - job_name: "postgres-user"
     static_configs:
-      - targets: ['host.docker.internal:9187']
+      - targets: ["host.docker.internal:9187"]
 
   # Postgres Trip DB
-  - job_name: 'postgres-trip'
+  - job_name: "postgres-trip"
     static_configs:
-      - targets: ['host.docker.internal:9188']
+      - targets: ["host.docker.internal:9188"]
