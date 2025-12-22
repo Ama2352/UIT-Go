@@ -101,12 +101,12 @@ jobs:
 
             echo "Backend infrastructure ready"
 
-# =============================================================================
-# Terraform PLAN
-# - Generates deterministic SSH key
-# - Runs terraform plan → tfplan
-# - Uploads tfplan + SSH keys as artifacts for apply job
-# =============================================================================
+  # =============================================================================
+  # Terraform PLAN
+  # - Generates deterministic SSH key
+  # - Runs terraform plan → tfplan
+  # - Uploads tfplan + SSH keys as artifacts for apply job
+  # =============================================================================
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
@@ -197,12 +197,12 @@ jobs:
             ssh-artifacts/id_rsa.pub
           retention-days: 1
 
-# =============================================================================
-# Terraform APPLY
-# - Downloads EXACT plan + ssh key used during plan
-# - Runs: terraform apply tfplan
-# - Updates GitHub secrets for CD pipeline
-# =============================================================================
+  # =============================================================================
+  # Terraform APPLY
+  # - Downloads EXACT plan + ssh key used during plan
+  # - Runs: terraform apply tfplan
+  # - Updates GitHub secrets for CD pipeline
+  # =============================================================================
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
@@ -275,7 +275,7 @@ jobs:
         run: |
           echo "vm_ip=$(terraform output -raw vm_public_ip)" >> "$GITHUB_OUTPUT"
           echo "vm_user=$(terraform output -raw admin_username)" >> "$GITHUB_OUTPUT"
-          
+
           # Debug: Print outputs for verification
           echo "VM IP: $(terraform output -raw vm_public_ip)"
           echo "VM User: $(terraform output -raw admin_username)"
@@ -316,9 +316,9 @@ jobs:
           path: ssh-artifacts/id_rsa
           retention-days: 1
 
-# =============================================================================
-# Deploy Application (runs immediately after apply in same workflow)
-# =============================================================================
+  # =============================================================================
+  # Deploy Application (runs immediately after apply in same workflow)
+  # =============================================================================
   deploy:
     name: Deploy Application
     needs: apply
@@ -344,14 +344,14 @@ jobs:
             echo "❌ ERROR: SSH private key not found"
             exit 1
           fi
-          
+
           # Read the key content and set as output using heredoc delimiter
           {
             echo 'ssh_key<<EOFKEY'
             cat ssh-key/id_rsa
             echo 'EOFKEY'
           } >> "$GITHUB_OUTPUT"
-          
+
           echo "✅ SSH key loaded into output"
 
       - name: Wait for VM cloud-init
@@ -362,15 +362,15 @@ jobs:
       - name: Test SSH Connection
         run: |
           echo "Testing SSH connection with key..."
-          
+
           # Save key to temp file for testing
           mkdir -p ~/.ssh
           cat ssh-key/id_rsa > ~/.ssh/test_key
           chmod 600 ~/.ssh/test_key
-          
+
           echo "VM IP: ${{ needs.apply.outputs.vm_ip }}"
           echo "VM User: ${{ needs.apply.outputs.vm_user }}"
-          
+
           # Test basic SSH connection
           ssh -vvv -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -i ~/.ssh/test_key \
@@ -381,7 +381,7 @@ jobs:
               ping -c 3 ${{ needs.apply.outputs.vm_ip }} || true
               exit 1
             }
-          
+
           echo "✅ SSH connection verified"
 
       - name: Deploy via SSH
@@ -448,12 +448,15 @@ jobs:
             USERDB_PASSWORD=postgres
             USERDB_DATABASE=userdb
             DATABASE_URL=postgresql://postgres:postgres@user-postgres:5432/userdb
+            USERDB_REPLICA_URL=postgresql://postgres:postgres@user-replica:5432/postgres
 
             # Database - Trip Service
             TRIPDB_USERNAME=postgres
             TRIPDB_PASSWORD=postgres
             TRIPDB_DATABASE=tripdb
             TRIPDB_URL=jdbc:postgresql://trip-postgres:5432/tripdb
+            TRIPDB_REPLICA_URL=jdbc:postgresql://trip-replica:5432/tripdb
+            SPRING_JPA_HIBERNATE_DDL_AUTO=none
 
             # JWT
             JWT_SECRET=your-super-secret-jwt-key-change-in-production
@@ -462,6 +465,10 @@ jobs:
             # RabbitMQ
             RABBITMQ_USER=guest
             RABBITMQ_PASSWORD=guest
+
+            # Redis (Driver)
+            REDIS_HOST=driver-redis
+            REDIS_PORT=6379
             EOF
               echo ".env file created"
             fi
@@ -495,9 +502,9 @@ jobs:
             fi
 
             # Build and start services
-            echo "Starting Docker Compose services..."
-            sudo docker compose down --remove-orphans || true
-            sudo docker compose up -d --build
+            echo "Starting Docker Compose services (App + Monitoring)..."
+            sudo docker compose -f docker-compose.yml -f monitoring/docker-compose.monitor.yml down --remove-orphans || true
+            sudo docker compose -f docker-compose.yml -f monitoring/docker-compose.monitor.yml up -d --build
 
             echo "Waiting for services to start..."
             sleep 60
@@ -609,13 +616,13 @@ jobs:
           echo "  - Driver Service: ${BASE_URL}/drivers/*"
           echo "=========================================="
 
-# =============================================================================
-# Terraform DESTROY
-# - No plan used (terraform destroy does not require plan)
-# - No SSH regen
-# - No backend recreation
-# - Clean removal of infra and backend
-# =============================================================================
+  # =============================================================================
+  # Terraform DESTROY
+  # - No plan used (terraform destroy does not require plan)
+  # - No SSH regen
+  # - No backend recreation
+  # - Clean removal of infra and backend
+  # =============================================================================
   destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest

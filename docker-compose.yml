@@ -362,21 +362,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # LOCALSTACK
-  localstack:
-    image: localstack/localstack:latest
-    networks:
-      - uit-go-network
-    ports:
-      - "4566:4566"
-      - "4571:4571"
-    environment:
-      - SERVICES=ec2,s3,iam,sts,lambda
-      - DEBUG=1
-    volumes:
-      - "./localstack-data:/var/lib/localstack"
-      - "/var/run/docker.sock:/var/run/docker.sock"
-
 # =====================================
 # NETWORKS
 # =====================================
