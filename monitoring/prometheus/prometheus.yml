@@ -4,34 +4,35 @@ global:
 scrape_configs:
   - job_name: "prometheus"
     static_configs:
-      - targets: ["localhost:9090"]
+      - targets: ["prometheus:9090"]
 
   # Node Exporter
   - job_name: "node-exporter"
     static_configs:
-      - targets: ["host.docker.internal:9100"]
+      - targets: ["node-exporter:9100"]
 
   # cAdvisor
   - job_name: "cadvisor"
     static_configs:
-      - targets: ["host.docker.internal:8080"]
+      - targets: ["cadvisor:8080"]
 
   # Redis
   - job_name: "redis-exporter"
     static_configs:
-      - targets: ["host.docker.internal:9121"]
+      - targets: ["redis-exporter:9121"]
 
   # RabbitMQ
   - job_name: "rabbitmq-exporter"
     static_configs:
-      - targets: ["host.docker.internal:9419"]
+      - targets: ["rabbitmq-exporter:9419"]
 
   # Postgres User DB
   - job_name: "postgres-user"
     static_configs:
-      - targets: ["host.docker.internal:9187"]
+      - targets: ["postgres-exporter-user:9187"]
 
   # Postgres Trip DB
   - job_name: "postgres-trip"
     static_configs:
-      - targets: ["host.docker.internal:9188"]
+      - targets: ["postgres-exporter-trip:9187"] # Note: Internal port is 9187, externally mapped to 9188
+

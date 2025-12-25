@@ -35,11 +35,11 @@ services:
         paths:
           - /trips
         strip_path: false
-    plugins:
-      - name: jwt
-        config:
-          claims_to_verify:
-            - exp
+    # plugins:
+    #   - name: jwt
+    #     config:
+    #       claims_to_verify:
+    #         - exp
 
   - name: driver-service
     url: http://driver-service:8082
@@ -48,8 +48,8 @@ services:
         paths:
           - /drivers
         strip_path: false
-    plugins:
-      - name: jwt
-        config:
-          claims_to_verify:
-            - exp
+    # plugins:
+    #   - name: jwt
+    #     config:
+    #       claims_to_verify:
+    #         - exp

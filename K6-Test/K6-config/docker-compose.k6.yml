@@ -6,7 +6,7 @@ services:
       - ./k6.env
     environment:
       - K6_OUT=experimental-prometheus-rw
-      - K6_PROMETHEUS_RW_SERVER_URL=http://host.docker.internal:9090/api/v1/write
+      - K6_PROMETHEUS_RW_SERVER_URL=http://4.193.227.142:9090/api/v1/write
       - K6_PROMETHEUS_RW_TREND_STATS=p(90),p(95),p(99),min,max,avg
       - K6_PROMETHEUS_RW_PUSH_INTERVAL=15s
       - K6_PROMETHEUS_RW_TIMEOUT=30s

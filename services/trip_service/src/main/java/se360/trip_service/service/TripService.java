@@ -2,12 +2,10 @@ package se360.trip_service.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.StaleObjectStateException;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
+
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
 import se360.trip_service.mapper.TripMapper;
 import se360.trip_service.messaging.events.*;
@@ -44,6 +42,7 @@ public class TripService {
     private final TripMapper tripMapper;
     private final TripRatingRepository tripRatingRepository;
     private final TripAssignmentLockService lockService;
+    private final TransactionTemplate transactionTemplate;
 
     // ░░░ ESTIMATE FARE ░░░
     public EstimateFareResponse estimateFare(EstimateFareRequest req) {
@@ -152,48 +151,64 @@ public class TripService {
      * @param driverId The driver accepting the trip
      * @return AcceptResult indicating success or failure reason
      */
-    @Transactional
+
+    // @Transactional -- REMOVED to narrow scope
     public AcceptResult acceptTripWithLock(UUID tripId, UUID driverId) {
         // 1. Try to acquire lock FIRST (one-shot, no retry)
-        // This MUST happen before reading the trip to prevent race conditions
+        // This is pure Redis I/O - executed OUTSIDE DB transaction.
         boolean acquired = lockService.tryAcquire(tripId, driverId, 5);
         if (!acquired) {
             return AcceptResult.ALREADY_ASSIGNED;
         }
 
-        // 2. Find trip (now protected by lock - we have exclusive access)
+        // 2. Initial Read & Status Check (Read-Replica friendly)
+        // Uses tripRepository.findById() which is @Transactional(readOnly=true) by
+        // default
         Optional<Trip> tripOpt = tripRepository.findById(tripId);
         if (tripOpt.isEmpty()) {
             return AcceptResult.TRIP_NOT_FOUND;
         }
 
         Trip trip = tripOpt.get();
-
-        // 3. State check - filter requests for already-assigned trips
         if (trip.getTripStatus() != TripStatus.SEARCHING) {
             return AcceptResult.ALREADY_ASSIGNED;
         }
 
-        // 4. Update DB (fresh trip object, correct version)
-        try {
-            trip.setDriverId(driverId);
-            trip.setTripStatus(TripStatus.ASSIGNED);
-            trip.setAcceptedAt(LocalDateTime.now());
-            trip.setUpdatedAt(LocalDateTime.now());
-            tripRepository.saveAndFlush(trip);
-        } catch (StaleObjectStateException | ObjectOptimisticLockingFailureException e) {
-            // Another driver won the race at the DB level - return graceful conflict
-            log.warn("Optimistic lock conflict for trip {}: another driver assigned first", tripId);
-            return AcceptResult.ALREADY_ASSIGNED;
+        // 3. EXECUTE UPDATE IN SHORT TRANSACTION
+        // Only open transaction for the critical compare-and-swap DB operation
+        AcceptResult txResult = transactionTemplate.execute(status -> {
+            // Direct Update Query - No Read required on Primary!
+            // "UPDATE trip SET ... WHERE id = ? AND status = ?"
+            int updatedRows = tripRepository.assignDriver(
+                    tripId,
+                    driverId,
+                    TripStatus.ASSIGNED,
+                    TripStatus.SEARCHING,
+                    LocalDateTime.now(),
+                    LocalDateTime.now());
+
+            if (updatedRows == 0) {
+                // If 0 rows updated, it means the trip was not found OR status was not
+                // SEARCHING
+                // We already checked uniqueness via Redis, so most likely another driver stole
+                // it
+                // just before we got here (race condition), or the status changed.
+                log.warn("Atomic update failed for trip {}: status changed or not found", tripId);
+                return AcceptResult.ALREADY_ASSIGNED;
+            }
+
+            return AcceptResult.SUCCESS;
+        });
+
+        // 4. Publish event (RabbitMQ I/O) - OUTSIDE transaction
+        if (txResult == AcceptResult.SUCCESS) {
+            TripAssignedEvent event = new TripAssignedEvent();
+            event.setTripId(tripId);
+            event.setDriverId(driverId);
+            eventPublisher.publishTripAssigned(event);
         }
 
-        // 5. Publish event for DriverService to notify via WebSocket
-        TripAssignedEvent event = new TripAssignedEvent();
-        event.setTripId(tripId);
-        event.setDriverId(driverId);
-        eventPublisher.publishTripAssigned(event);
-
-        return AcceptResult.SUCCESS;
+        return txResult;
     }
 
     // ░░░ START TRIP + publish trip.started ░░░
